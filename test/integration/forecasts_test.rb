@@ -215,9 +215,9 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     get root_path
     assert_response :success
     assert_select "form[action=?][method=post]", forecasts_path
-    assert_select "label[for=address]", text: "Street address"
+    assert_select "label[for=address]", text: "Address or ZIP code"
     assert_select "input#address[required][maxlength='300'][aria-describedby=address-help]"
-    assert_select "#address-help", text: /US addresses only/
+    assert_select "#address-help", text: /US only/
     assert_select "#forecast-heading", text: "What's it like out there?"
     assert_select "a[href='https://open-meteo.com/']"
   end
@@ -266,7 +266,77 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_select "input[type=submit]"
   end
 
+  test "ZIP and ZIP+4 preserve leading zeros and share weather with a street address" do
+    stub_census
+    weather = stub_weather
+    query
+    zip_request = stub_zip
+    [ "02108", " 02108-1234 " ].each do |input|
+      post forecasts_path, params: { address: input }, as: :json
+      assert_response :success
+      assert_equal "02108", response.parsed_body.dig("location", "postal_code")
+      assert_equal "Boston, Massachusetts 02108", response.parsed_body.dig("location", "address")
+      assert_equal true, response.parsed_body.fetch("from_cache")
+    end
+    assert_requested zip_request, times: 2
+    assert_requested weather, times: 1
+    assert_requested :get, /geocoding.geo.census.gov/, times: 1
+  end
+
+  test "ZIP alone retrieves weather and renders HTML without Census" do
+    stub_zip
+    stub_weather
+    post forecasts_path, params: { address: "02108" }
+    assert_response :success
+    assert_select "#forecast-heading", text: "Boston, Massachusetts 02108"
+    assert_select ".cache-badge", text: "Just fetched"
+    assert_select "input#address[value='02108']"
+    assert_not_requested :get, /geocoding.geo.census.gov/
+  end
+
+  test "rejects malformed ZIPs without calling a provider" do
+    [ "1234", "123456", "021081234", "02108-123", "02108-12345" ].each do |zip|
+      post forecasts_path, params: { address: zip }, as: :json
+      assert_error :unprocessable_content, "invalid_zip"
+    end
+    assert_not_requested :get, /census.gov|open-meteo.com/
+  end
+
+  test "ZIP lookup requires an exact US postal match and rejects ambiguous results" do
+    [ {}, { results: [] }, { results: [ zip_place.merge(country_code: "CA") ] },
+      { results: [ zip_place.merge(postcodes: [ "02109" ]) ] } ].each do |payload|
+      stub_zip(payload: payload)
+      post forecasts_path, params: { address: "02108" }, as: :json
+      assert_error :unprocessable_content, "zip_not_found"
+    end
+    stub_zip(payload: { results: [ zip_place, zip_place.merge(name: "Another place") ] })
+    post forecasts_path, params: { address: "02108" }, as: :json
+    assert_error :unprocessable_content, "ambiguous_zip"
+    assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
+  end
+
+  test "ZIP lookup handles malformed payloads and upstream failures" do
+    [ { results: nil }, { results: [ nil ] }, { results: [ zip_place.merge(latitude: 999) ] } ].each do |payload|
+      stub_zip(payload: payload)
+      post forecasts_path, params: { address: "02108" }, as: :json
+      assert_error :bad_gateway, "invalid_provider_response"
+    end
+    stub_request(:get, /geocoding-api.open-meteo.com/).to_timeout
+    post forecasts_path, params: { address: "02108" }, as: :json
+    assert_error :gateway_timeout, "provider_timeout"
+  end
+
   private
+
+  def zip_place
+    { name: "Boston", admin1: "Massachusetts", country_code: "US", postcodes: [ "02108" ], latitude: 42.36, longitude: -71.06 }
+  end
+
+  def stub_zip(payload: { results: [ zip_place ] })
+    stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: {
+      name: "02108", countryCode: "US", count: "100", language: "en", format: "json"
+    }).to_return(body: payload.to_json)
+  end
 
   def query
     post forecasts_path, params: { address: "123 Main St, Boston, MA 02108" }, as: :json

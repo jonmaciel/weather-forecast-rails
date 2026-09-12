@@ -38,7 +38,7 @@ docker exec "$container_id" ruby -rnet/http -e '
   end
   abort "Health check failed" unless ready
   response = Net::HTTP.get_response(URI("http://127.0.0.1:3000/"))
-  abort "Home page failed" unless response.code == "200" && response.body.include?("Street address")
+  abort "Home page failed" unless response.code == "200" && response.body.include?("Address or ZIP code")
   stylesheet = response.body[/href="([^"]+\.css)"/, 1]
   abort "Stylesheet missing" unless stylesheet
   abort "Compiled assets failed" unless Net::HTTP.get_response(URI.join("http://127.0.0.1:3000", stylesheet)).code == "200"

@@ -4,11 +4,12 @@ Date: 2026-09-12. Status: address lookup, current weather, 30-minute cache and H
 
 ## Scope
 
-Support full street addresses in the 50 US states and Washington, DC. This is
+Support full street addresses and ZIP codes in the 50 US states and Washington, DC. This is
 an application assumption based on the ZIP-code requirement, not an explicit
 requirement from the brief. This restriction is displayed near the form.
 Use Fahrenheit with an explicit unit label and the location's timezone.
-International addresses and ZIP-only search are outside the first version.
+International addresses are outside the supported scope. ZIP-only inputs accept
+five digits or ZIP+4, retaining the existing `address` API parameter.
 
 ## Providers
 
@@ -26,6 +27,17 @@ ZIPs, unsupported states, no matches, and ambiguous matches with actionable
 messages; never silently select an arbitrary candidate.
 
 Source: [Census API documentation](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html).
+
+### ZIP lookup: Open-Meteo geocoding
+
+Use `https://geocoding-api.open-meteo.com/v1/search` with the normalized ZIP,
+`countryCode=US`, `count=100`, `language=en` and `format=json`. Require the exact
+ZIP in the result's `postcodes` and country US. Reject no matches and multiple
+matches instead of choosing an arbitrary location. Coordinates represent the
+associated locality, not the precise ZIP centroid. Coverage is provider-dependent;
+users can try a full address if ZIP lookup fails. GeoNames attribution is shown.
+
+Source: [Geocoding API](https://open-meteo.com/en/docs/geocoding-api).
 
 ### Weather: Open-Meteo
 
@@ -46,8 +58,8 @@ Sources: [Weather API](https://open-meteo.com/en/docs),
 
 ## Alternatives considered
 
-- Open-Meteo geocoding: searches place names and postal codes, so it does not
-  cover full street-address input on its own.
+- Open-Meteo geocoding alone does not cover full street addresses. It is now
+  selected for ZIP-only input, with Census retained for street addresses.
   [Documentation](https://open-meteo.com/en/docs/geocoding-api).
 - Public Nominatim: broader coverage, but its public service has a strict
   one-request-per-second limit and requires an identifying User-Agent and
@@ -56,7 +68,7 @@ Sources: [Weather API](https://open-meteo.com/en/docs),
 
 ## Application contract
 
-Keep two small provider clients separate from a forecast service and controller.
+Keep small provider clients separate from a forecast service and controller.
 Use Ruby's Net::HTTP with fixed HTTPS endpoints, encoded query parameters,
 verified TLS, a 3-second connection timeout and a 10-second read timeout.
 Do not retry during the initial synchronous request. Translate timeouts, rate
@@ -68,7 +80,7 @@ ZIP+4 to its first five digits. Cache successful weather payloads for 30 minutes
 under a versioned key containing provider, country, ZIP and unit. Different
 addresses in the same ZIP reuse the first successful forecast in that window;
 this is a deliberate area-level approximation. Keep the current matched address
-outside that shared payload. Geocoding still runs before the weather-cache lookup.
+outside that shared payload. The appropriate geocoder still runs before the weather-cache lookup.
 Do not cache errors; derive the cache indicator separately for each request.
 
 Rails.cache uses process-local memory for local development. Restarting loses

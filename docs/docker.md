@@ -36,7 +36,7 @@ Dependency vulnerability auditing remains in the existing CI workflow and needs
 network access to maintain its advisory database.
 
 The first build downloads the base image, OS packages and locked gems. Runtime
-weather lookups require HTTPS egress to Census and Open-Meteo. Tests mock those APIs.
+weather lookups require HTTPS egress to Census and Open-Meteo (weather and geocoding). Tests mock those APIs.
 
 ## Production image
 

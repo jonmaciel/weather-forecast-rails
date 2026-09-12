@@ -72,9 +72,9 @@ For a live request from the terminal:
 bin/rails runner 'puts Weather::Forecast.new.call(address: "4600 Silver Hill Rd, Washington, DC 20233").to_json'
 ```
 
-The service supports full addresses in the 50 US states and Washington, DC and
-returns Fahrenheit. It calls Census for the ZIP and coordinates, then Open-Meteo
-for current conditions. Network access is required for live requests only.
+The service accepts full addresses or ZIP codes in the 50 US states and
+Washington, DC and returns Fahrenheit. Street addresses use Census; ZIP-only
+queries use Open-Meteo geocoding. Both paths use Open-Meteo for current conditions. Network access is required for live requests only.
 
 `POST /forecasts` accepts an `address` parameter and returns `location` and
 `current` JSON objects plus a boolean `from_cache` indicator. The endpoint retains Rails CSRF protection. The HTML form includes the session's
@@ -98,7 +98,8 @@ Open-Meteo again. Reads do not extend expiration. After expiration, the next
 request retrieves fresh weather. Errors are never cached or replaced by expired
 weather. The key includes a schema version, provider, country, ZIP and unit.
 
-Each request still resolves the address through Census. Addresses sharing a ZIP
+Each request resolves the input through Census (street address) or Open-Meteo
+geocoding (ZIP). Inputs sharing a ZIP
 reuse weather but retain their own matched address and coordinates in the result.
 The ZIP is normalized to five digits, including leading zeros. This deliberately
 approximates weather for the whole ZIP using the first successful lookup.
@@ -111,7 +112,7 @@ The UI displays "Just fetched" on a miss and "From cache" on a hit.
 
 ## Browser workflow
 
-Open http://localhost:3000, enter a full US street address and submit the form.
+Open http://localhost:3000, enter a US address or ZIP code and submit the form.
 The result shows the matched location, temperature in Fahrenheit, conditions time
 and timezone. Submit again to see the cache indicator. Invalid addresses and
 provider failures preserve the input so it can be corrected or retried.
@@ -120,3 +121,17 @@ The page uses server-rendered ERB and CSS, works without JavaScript, and stacks
 its panels on narrow screens. Labels, keyboard focus styling and associated
 error messages support keyboard and assistive-technology use. Weather attribution
 is shown in the footer. HTML and JSON flows are covered by the integration suite.
+
+## ZIP-only search
+
+Enter `20233`, `02108`, or ZIP+4 such as `02108-1234` in the same form. The JSON
+endpoint also accepts these strings in its existing `address` parameter. Leading
+zeros are significant; send ZIPs as strings, not JSON numbers. ZIP+4 is normalized
+to five digits. Invalid numeric formats are rejected without a provider request.
+
+ZIP lookup uses Open-Meteo geocoding and requires an exact match in the returned
+US location's postal-code list. Unknown ZIPs and ambiguous results ask the user
+to correct the ZIP or supply a full address. This provider returns locality
+coordinates, not a precise ZIP centroid; forecasts are approximate for the area.
+Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
+30-minute weather cache. Location attribution includes GeoNames.
