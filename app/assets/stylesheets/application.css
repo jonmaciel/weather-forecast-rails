@@ -1,1 +1,62 @@
-body { font-family: system-ui, sans-serif; margin: 2rem; }
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #183b38;
+  background: #f8f9f5;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; text-underline-offset: 3px; }
+.page { width: min(1120px, 100%); margin: auto; padding: 40px 32px 24px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark { font-size: 28px; color: #926117; }
+.brand-name { font-size: 16px; font-weight: 700; text-decoration: none; letter-spacing: -.4px; }
+.weather-layout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 72px; align-items: center; margin: 72px 0; }
+.eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.7px; line-height: 1.6; }
+h1 { font-size: clamp(40px, 4.8vw, 60px); font-weight: 600; line-height: 1.07; letter-spacing: -2.8px; margin: 20px 0; }
+.intro { max-width: 370px; color: #526864; font-size: 16px; line-height: 1.7; }
+.search-form { margin-top: 32px; }
+.search-form label { font-size: 14px; font-weight: 650; }
+.field-help { color: #526864; font-size: 12px; line-height: 1.6; margin: 8px 0 12px; }
+.search-form input[type="text"] { width: 100%; min-height: 54px; border: 1px solid #a8b8b0; background: #fff; border-radius: 9px; padding: 14px; font: inherit; font-size: 16px; color: #183b38; }
+.search-form input::placeholder { color: #64746d; font-size: 13px; }
+.search-form input[aria-invalid="true"] { border-color: #a12f24; }
+:focus-visible { outline: 3px solid #956313; outline-offset: 4px; }
+.search-button { display: block; width: 100%; min-height: 52px; margin-top: 14px; border: 0; border-radius: 9px; background: #214e44; color: #fff; font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; }
+.search-button:hover { background: #163b32; }
+.search-note { font-size: 11px; line-height: 1.7; color: #526864; }
+.forecast-panel { min-width: 0; min-height: 450px; padding: 32px; border: 1px solid #d2e0d6; border-radius: 22px; background: #eaf1e9; }
+.forecast-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.forecast-topline .eyebrow { margin: 0; }
+.cache-badge { font-size: 11px; font-weight: 650; background: #fff; padding: 7px 10px; border-radius: 20px; }
+.cache-badge.is-cached { background: #f4e8c7; color: #624510; }
+.forecast-panel h2 { font-size: 21px; line-height: 1.45; letter-spacing: -.4px; overflow-wrap: anywhere; margin: 24px 0 4px; }
+.location-detail { font-size: 12px; color: #526864; margin: 0; }
+.temperature { font-size: clamp(64px, 7vw, 88px); letter-spacing: -5px; line-height: 1.1; margin: 26px 0 0; font-weight: 500; }
+.temperature span { font-size: 34px; vertical-align: top; display: inline-block; margin: 12px 0 0 6px; letter-spacing: -1px; }
+.temperature-label { margin: 4px 0 26px; color: #526864; font-size: 13px; }
+.forecast-details { border-top: 1px solid #c7d7cc; padding-top: 18px; font-size: 12px; }
+.forecast-details div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-bottom: 10px; }
+.forecast-details dt { color: #526864; }
+.forecast-details dd { margin: 0; overflow-wrap: anywhere; }
+.cache-explanation { font-size: 11px; color: #526864; line-height: 1.7; margin: 18px 0 0; }
+.is-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.empty-symbol { font-size: 64px; color: #926117; margin-bottom: 22px; }
+.is-empty .eyebrow { font-size: 10px; }
+.is-empty h2 { margin-top: 8px; font-size: 26px; }
+.empty-description { max-width: 260px; color: #526864; font-size: 14px; line-height: 1.7; }
+.empty-label { margin-top: 16px; font-size: 11px; border: 1px solid #b1c5b7; padding: 8px 14px; border-radius: 20px; }
+.error-message { margin-top: 12px; padding: 14px; background: #fff0eb; border-left: 3px solid #a12f24; border-radius: 4px; color: #812a22; font-size: 13px; line-height: 1.6; }
+.error-message p { margin: 4px 0 0; }
+.page-footer { padding-top: 20px; border-top: 1px solid #dbe2d9; color: #526864; font-size: 11px; line-height: 1.8; }
+.page-footer p { margin: 4px 0; }
+
+@media (max-width: 760px) {
+  .page { padding: 24px 20px; }
+  .weather-layout { grid-template-columns: 1fr; gap: 28px; margin: 40px 0; }
+  h1 { letter-spacing: -1.8px; }
+  .intro { max-width: none; }
+  .forecast-panel { padding: 24px; min-height: 370px; }
+}

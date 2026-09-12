@@ -211,6 +211,61 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "home renders an accessible search form and empty state" do
+    get root_path
+    assert_response :success
+    assert_select "form[action=?][method=post]", forecasts_path
+    assert_select "label[for=address]", text: "Street address"
+    assert_select "input#address[required][maxlength='300'][aria-describedby=address-help]"
+    assert_select "#address-help", text: /US addresses only/
+    assert_select "#forecast-heading", text: "What's it like out there?"
+    assert_select "a[href='https://open-meteo.com/']"
+  end
+
+  test "HTML submission displays temperature timestamp and cache indicator" do
+    stub_census
+    weather = stub_weather
+    2.times do |index|
+      post forecasts_path, params: { address: "123 Main St, Boston, MA 02108" }
+      assert_response :success
+      assert_equal "text/html", response.media_type
+      assert_select "input#address[value=?]", "123 Main St, Boston, MA 02108"
+      assert_select "#forecast-heading", text: @match["matchedAddress"]
+      assert_select ".temperature", text: "0°F"
+      assert_select "time[datetime='2026-09-12T10:15']", text: /Sep 12, 2026/
+      assert_select ".cache-badge", text: index.zero? ? "Just fetched" : "From cache"
+      assert_select "#search-error", count: 0
+    end
+    assert_requested weather, times: 1
+  end
+
+  test "HTML errors preserve and escape the input and allow correction" do
+    address = '<script>alert("example")</script>'
+    stub_census(matches: [], address: address)
+    post forecasts_path, params: { address: address }
+    assert_response :unprocessable_content
+    assert_select "#search-error[role=alert]", text: /Address not found/
+    assert_select "input#address[aria-invalid=true][value=?]", address
+    assert_select "script", count: 0
+    assert_select ".temperature", count: 0
+    assert_select "input[type=submit]"
+  end
+
+  test "HTML timeout and unavailable messages leave the form usable" do
+    stub_census
+    stub_request(:get, /api.open-meteo.com/).to_timeout
+    post forecasts_path, params: { address: "123 Main St, Boston, MA 02108" }
+    assert_response :gateway_timeout
+    assert_select "#search-error", text: /took too long/
+    assert_select "input#address[aria-invalid=true]", count: 0
+
+    stub_request(:get, /api.open-meteo.com/).to_return(status: 503)
+    post forecasts_path, params: { address: "123 Main St, Boston, MA 02108" }
+    assert_response :bad_gateway
+    assert_select "#search-error", text: /unavailable/
+    assert_select "input[type=submit]"
+  end
+
   private
 
   def query

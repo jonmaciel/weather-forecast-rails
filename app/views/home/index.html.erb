@@ -1,4 +1,72 @@
-<main>
-  <h1>Weather Forecast</h1>
-  <p>The application is ready for development.</p>
+<% content_for :title, @error ? "Search issue | Weather Forecast" : "Your local weather | Weather Forecast" %>
+<main class="page">
+  <header class="brand">
+    <span class="brand-mark" aria-hidden="true">☀</span>
+    <%= link_to "Weather Forecast", root_path, class: "brand-name" %>
+  </header>
+
+  <div class="weather-layout">
+    <section class="search-panel" aria-labelledby="search-heading">
+      <p class="eyebrow">A little clarity for your day</p>
+      <h1 id="search-heading">Your weather.<br>A little closer.</h1>
+      <p class="intro">Find current conditions for the place you have in mind. Just start with an address.</p>
+
+      <%= form_with url: forecasts_path, method: :post, local: true, class: "search-form" do |form| %>
+        <%= form.label :address, "Street address" %>
+        <p id="address-help" class="field-help">US addresses only: 50 states and Washington, DC. Include city and state or ZIP code.</p>
+        <%= form.text_field :address, value: @address, required: true, maxlength: 300,
+          placeholder: "4600 Silver Hill Rd, Washington, DC 20233",
+          autocomplete: "off", autofocus: @error.present?,
+          aria: { describedby: @error ? "address-help search-error" : "address-help",
+                  invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
+        <% if @error %>
+          <div class="error-message" id="search-error" role="alert">
+            <strong>We couldn't get that forecast.</strong>
+            <p><%= @error.message %></p>
+          </div>
+        <% end %>
+        <%= form.submit "Check the weather", class: "search-button" %>
+      <% end %>
+      <p class="search-note">Current conditions in °F. Forecasts are refreshed after 30 minutes.</p>
+    </section>
+
+    <section class="forecast-panel <%= 'is-empty' unless @forecast %>" aria-labelledby="forecast-heading">
+      <% if @forecast %>
+        <% current = @forecast.fetch(:current) %>
+        <% location = @forecast.fetch(:location) %>
+        <div class="forecast-topline">
+          <p class="eyebrow">Current conditions</p>
+          <span class="cache-badge <%= 'is-cached' if @forecast.fetch(:from_cache) %>">
+            <%= @forecast.fetch(:from_cache) ? "From cache" : "Just fetched" %>
+          </span>
+        </div>
+        <h2 id="forecast-heading"><%= location.fetch(:address) %></h2>
+        <p class="location-detail">ZIP <%= location.fetch(:postal_code) %> · United States</p>
+        <p class="temperature"><%= number_with_precision(current.fetch(:temperature), precision: 1, strip_insignificant_zeros: true) %><span>°F</span></p>
+        <p class="temperature-label">Air temperature</p>
+        <dl class="forecast-details">
+          <div>
+            <dt>Conditions at</dt>
+            <dd><time datetime="<%= current.fetch(:time) %>"><%= DateTime.iso8601(current.fetch(:time)).strftime("%b %-d, %Y · %-I:%M %p") %></time></dd>
+          </div>
+          <div>
+            <dt>Local timezone</dt>
+            <dd><%= current.fetch(:timezone).tr('_', ' ') %></dd>
+          </div>
+        </dl>
+        <p class="cache-explanation"><%= @forecast.fetch(:from_cache) ? "Saved forecast for this ZIP. Reused for up to 30 minutes after retrieval." : "New forecast retrieved for this ZIP. Available to reuse for 30 minutes." %></p>
+      <% else %>
+        <div class="empty-symbol" aria-hidden="true">☀</div>
+        <p class="eyebrow">A forecast starts with a place</p>
+        <h2 id="forecast-heading">What's it like out there?</h2>
+        <p class="empty-description">Enter a street address to see the current temperature and local conditions time.</p>
+        <span class="empty-label">No location selected</span>
+      <% end %>
+    </section>
+  </div>
+
+  <footer class="page-footer">
+    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+    <p>Address lookup by <a href="https://geocoding.geo.census.gov/">US Census Bureau</a>. Model-derived weather, shared by ZIP.</p>
+  </footer>
 </main>
