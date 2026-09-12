@@ -31,6 +31,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_equal "°F", data.dig("current", "unit")
     assert_equal "America/New_York", data.dig("current", "timezone")
     assert_equal "no-store", response.headers["Cache-Control"]
+    assert_equal false, data.fetch("from_cache")
     assert_requested census, times: 1
     assert_requested weather, times: 1
   end
@@ -117,6 +118,97 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     stub_request(:get, /api.open-meteo.com/).to_return(status: 204)
     query
     assert_error :bad_gateway, "invalid_provider_response"
+  end
+
+  test "shares weather across addresses in the same normalized ZIP but preserves each address" do
+    census = stub_census
+    weather = stub_weather
+    query
+    original = response.parsed_body
+
+    @match["matchedAddress"] = "125 MAIN ST, BOSTON, MA, 02108"
+    @match["addressComponents"]["zip"] = "02108"
+    @match["coordinates"]["y"] = 42.361
+    second_address = "125 Main St, Boston, MA 02108"
+    second_census = stub_census(address: second_address)
+    post forecasts_path, params: { address: second_address }, as: :json
+
+    assert_response :success
+    assert_equal true, response.parsed_body.fetch("from_cache")
+    assert_equal original.fetch("current"), response.parsed_body.fetch("current")
+    assert_equal @match["matchedAddress"], response.parsed_body.dig("location", "address")
+    assert_equal 42.361, response.parsed_body.dig("location", "latitude")
+    assert_requested weather, times: 1
+    assert_requested census, times: 1
+    assert_requested second_census, times: 1
+  end
+
+  test "expires after 30 minutes without extending the TTL on a cache hit" do
+    travel_to Time.zone.local(2026, 9, 12, 10, 0, 0) do
+      stub_census
+      weather = stub_weather
+      query
+      assert_equal false, response.parsed_body.fetch("from_cache")
+
+      travel 30.minutes - 1.second
+      query
+      assert_equal true, response.parsed_body.fetch("from_cache")
+      assert_requested weather, times: 1
+
+      travel 1.second
+      query
+      assert_response :success
+      assert_equal false, response.parsed_body.fetch("from_cache")
+      assert_requested weather, times: 2
+    end
+  end
+
+  test "isolates different ZIP codes even when coordinates are identical" do
+    stub_census
+    weather = stub_weather
+    query
+
+    @match["addressComponents"]["zip"] = "02109"
+    stub_census
+    query
+    assert_equal false, response.parsed_body.fetch("from_cache")
+    assert_equal "02109", response.parsed_body.dig("location", "postal_code")
+    assert_requested weather, times: 2
+
+    query
+    assert_equal true, response.parsed_body.fetch("from_cache")
+    assert_requested weather, times: 2
+  end
+
+  test "does not cache provider failures and caches a later successful response" do
+    stub_census
+    failed_request = stub_request(:get, /api.open-meteo.com/).to_return(status: 503)
+    query
+    assert_error :bad_gateway, "provider_unavailable"
+    query
+    assert_error :bad_gateway, "provider_unavailable"
+    assert_requested failed_request, times: 2
+
+    stub_weather
+    query
+    assert_response :success
+    assert_equal false, response.parsed_body.fetch("from_cache")
+    query
+    assert_equal true, response.parsed_body.fetch("from_cache")
+    assert_requested :get, /api.open-meteo.com/, times: 3
+  end
+
+  test "does not serve expired weather when refreshing fails" do
+    travel_to Time.zone.local(2026, 9, 12, 10, 0, 0) do
+      stub_census
+      stub_weather
+      query
+      travel 30.minutes
+      stub_request(:get, /api.open-meteo.com/).to_timeout
+      query
+      assert_error :gateway_timeout, "provider_timeout"
+      assert_not response.parsed_body.key?("current")
+    end
   end
 
   private
