@@ -1,0 +1,48 @@
+#!/bin/sh
+# Provider-independent container checks. Requires Docker with BuildKit.
+set -eu
+cd "$(dirname "$0")/.."
+image="${DOCKER_IMAGE:-weather-forecast}"
+container_id=""
+cleanup() {
+  if [ -n "$container_id" ]; then
+    docker logs "$container_id"
+    docker rm -f "$container_id" >/dev/null
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+docker build --target test -t "$image:test" .
+docker run --rm --network none -e CI=true "$image:test" bin/rails test
+docker run --rm --network none "$image:test" bin/rubocop
+docker run --rm --network none "$image:test" bundle exec brakeman --no-pager
+
+docker build --target production -t "$image:ci" .
+# This ephemeral key exists only for the isolated HTTP smoke test.
+SECRET_KEY_BASE="$(docker run --rm --network none --entrypoint ruby "$image:ci" -rsecurerandom -e 'print SecureRandom.hex(64)')"
+export SECRET_KEY_BASE
+container_id="$(docker run -d --network none -e SECRET_KEY_BASE \
+  -e RAILS_FORCE_SSL=false -e RAILS_ASSUME_SSL=false "$image:ci")"
+
+docker exec "$container_id" ruby -rnet/http -e '
+  uri = URI("http://127.0.0.1:3000/up")
+  ready = false
+  30.times do
+    begin
+      ready = Net::HTTP.get_response(uri).code == "200"
+      break if ready
+    rescue SystemCallError, IOError
+    end
+    sleep 1
+  end
+  abort "Health check failed" unless ready
+  response = Net::HTTP.get_response(URI("http://127.0.0.1:3000/"))
+  abort "Home page failed" unless response.code == "200" && response.body.include?("Street address")
+  stylesheet = response.body[/href="([^"]+\.css)"/, 1]
+  abort "Stylesheet missing" unless stylesheet
+  abort "Compiled assets failed" unless Net::HTTP.get_response(URI.join("http://127.0.0.1:3000", stylesheet)).code == "200"
+  abort "Container runs as root" if Process.uid.zero?
+  abort "Local master key was included" if File.exist?("config/master.key")
+  puts "Production smoke test passed: health, HTML, assets, non-root user, no master key."
+'

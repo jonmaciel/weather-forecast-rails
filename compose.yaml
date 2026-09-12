@@ -1,0 +1,19 @@
+name: weather-forecast
+services:
+  web:
+    build:
+      context: .
+      target: test
+    environment:
+      RAILS_ENV: development
+      PORT: "3000"
+    command: ["bin/rails", "server", "-b", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3001}:3000"
+    init: true
+    healthcheck:
+      test: ["CMD", "ruby", "-rnet/http", "-e", "exit(Net::HTTP.get_response(URI('http://127.0.0.1:3000/up')).code == '200' ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

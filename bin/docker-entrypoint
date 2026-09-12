@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+if [ "${RAILS_ENV:-production}" = "production" ] && [ -z "${SECRET_KEY_BASE:-}" ]; then
+  echo "SECRET_KEY_BASE must be provided at runtime through your deployment secret manager." >&2
+  exit 1
+fi
+
+exec "$@"
