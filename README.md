@@ -139,9 +139,17 @@ Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
 ## ZIP locality suggestions
 
 With JavaScript enabled, entering five ZIP digits (or ZIP+4) displays a selectable
-city/state suggestion after a short delay. Selecting it submits the weather form;
+city/state suggestion after a short delay. Selecting it confirms the locality without submitting the weather form;
 manual submission and full street addresses still work without JavaScript.
 Suggestions are ZIP lookups, not street-address autocomplete. The endpoint
 `GET /zip-lookup?zip=02108` accepts only five digits, caches successful locality
 lookups for one hour and never fetches weather. Failures leave manual search usable.
 ZIP results display city/state as the heading and ZIP separately below it.
+
+Keyboard interaction: Down/Up highlight the ZIP suggestion while focus stays in
+the input. Enter confirms it; Tab confirms and advances focus; Right confirms
+only at the end of the input with no selected text. Escape dismisses suggestions.
+After selection, edit the ZIP directly in the input to clear the selection and
+request a new suggestion. There is no separate Change action.
+The normal search button (or Enter after selection) submits the forecast request.
+Stale requests are cancelled and ignored, and composition input is respected.

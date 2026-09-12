@@ -21,6 +21,7 @@
           aria: { describedby: @error ? "address-help search-error" : "address-help",
                   invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
         <div id="zip-suggestion" class="zip-suggestion" hidden></div>
+        <div id="zip-selection" class="zip-selection" hidden></div>
         <p id="zip-status" class="field-help" role="status" aria-live="polite"></p>
         <% if @error %>
           <div class="error-message" id="search-error" role="alert">
