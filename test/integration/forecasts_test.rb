@@ -246,7 +246,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_content
     assert_select "#search-error[role=alert]", text: /Address not found/
     assert_select "input#address[aria-invalid=true][value=?]", address
-    assert_select "script", count: 0
+    assert_select "script:not([src])", count: 0
     assert_select ".temperature", count: 0
     assert_select "input[type=submit]"
   end
@@ -288,7 +288,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     stub_weather
     post forecasts_path, params: { address: "02108" }
     assert_response :success
-    assert_select "#forecast-heading", text: "Boston, Massachusetts 02108"
+    assert_select "#forecast-heading", text: "Boston, Massachusetts"
     assert_select ".cache-badge", text: "Just fetched"
     assert_select "input#address[value='02108']"
     assert_not_requested :get, /geocoding.geo.census.gov/
@@ -324,6 +324,27 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     stub_request(:get, /geocoding-api.open-meteo.com/).to_timeout
     post forecasts_path, params: { address: "02108" }, as: :json
     assert_error :gateway_timeout, "provider_timeout"
+  end
+
+  test "ZIP suggestion returns locality and caches successful lookups" do
+    lookup = stub_zip
+    2.times do
+      get zip_lookup_path, params: { zip: "02108" }, as: :json
+      assert_response :success
+      assert_equal({ "zip" => "02108", "label" => "Boston, Massachusetts" }, response.parsed_body)
+    end
+    assert_requested lookup, times: 1
+    assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
+  end
+
+  test "ZIP suggestion rejects incomplete input and handles missing ZIPs" do
+    get zip_lookup_path, params: { zip: "021" }, as: :json
+    assert_response :unprocessable_content
+    assert_not_requested :get, /open-meteo.com/
+    stub_zip(payload: {})
+    get zip_lookup_path, params: { zip: "02108" }, as: :json
+    assert_response :unprocessable_content
+    assert_match /not found/, response.parsed_body.fetch("error")
   end
 
   private

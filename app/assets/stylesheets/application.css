@@ -60,3 +60,8 @@ h1 { font-size: clamp(40px, 4.8vw, 60px); font-weight: 600; line-height: 1.07; l
   .intro { max-width: none; }
   .forecast-panel { padding: 24px; min-height: 370px; }
 }
+
+.zip-suggestion { margin-top: 8px; }
+.zip-option { width: 100%; text-align: left; padding: 14px; border: 1px solid #a8b8b0; border-radius: 9px; background: #eaf1e9; color: #183b38; font: inherit; font-size: 14px; line-height: 1.5; cursor: pointer; }
+.zip-option:hover { background: #dce9dc; }
+#zip-status:empty { display: none; }

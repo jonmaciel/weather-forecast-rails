@@ -12,4 +12,5 @@ Rails.application.routes.draw do
   # Defines the root path route ("/")
   root "home#index"
   resources :forecasts, only: :create
+  get "zip-lookup", to: "zip_lookups#show", as: :zip_lookup
 end

@@ -16,9 +16,12 @@
         <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a street address with city and state.</p>
         <%= form.text_field :address, value: @address, required: true, maxlength: 300,
           placeholder: "20233 or 4600 Silver Hill Rd, Washington, DC",
+          data: { zip_lookup_url: zip_lookup_path },
           autocomplete: "off", autofocus: @error.present?,
           aria: { describedby: @error ? "address-help search-error" : "address-help",
                   invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
+        <div id="zip-suggestion" class="zip-suggestion" hidden></div>
+        <p id="zip-status" class="field-help" role="status" aria-live="polite"></p>
         <% if @error %>
           <div class="error-message" id="search-error" role="alert">
             <strong>We couldn't get that forecast.</strong>
@@ -40,7 +43,7 @@
             <%= @forecast.fetch(:from_cache) ? "From cache" : "Just fetched" %>
           </span>
         </div>
-        <h2 id="forecast-heading"><%= location.fetch(:address) %></h2>
+        <h2 id="forecast-heading"><%= location.fetch(:display_name, location.fetch(:address)) %></h2>
         <p class="location-detail">ZIP <%= location.fetch(:postal_code) %> · United States</p>
         <p class="temperature"><%= number_with_precision(current.fetch(:temperature), precision: 1, strip_insignificant_zeros: true) %><span>°F</span></p>
         <p class="temperature-label">Air temperature</p>

@@ -32,7 +32,7 @@ module Weather
       raise TypeError unless latitude.is_a?(Numeric) && latitude.finite? && latitude.between?(-90, 90)
       raise TypeError unless longitude.is_a?(Numeric) && longitude.finite? && longitude.between?(-180, 180)
 
-      { address: "#{name}, #{state} #{zip}", country: "US", postal_code: zip, latitude: latitude, longitude: longitude }
+      { address: "#{name}, #{state} #{zip}", display_name: "#{name}, #{state}", country: "US", postal_code: zip, latitude: latitude, longitude: longitude }
     rescue KeyError, TypeError
       raise Error.new("invalid_provider_response", "The ZIP lookup service returned an invalid response.")
     end

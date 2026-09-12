@@ -117,7 +117,7 @@ The result shows the matched location, temperature in Fahrenheit, conditions tim
 and timezone. Submit again to see the cache indicator. Invalid addresses and
 provider failures preserve the input so it can be corrected or retried.
 
-The page uses server-rendered ERB and CSS, works without JavaScript, and stacks
+The page uses server-rendered ERB and CSS, supports form submission without JavaScript, and stacks
 its panels on narrow screens. Labels, keyboard focus styling and associated
 error messages support keyboard and assistive-technology use. Weather attribution
 is shown in the footer. HTML and JSON flows are covered by the integration suite.
@@ -135,3 +135,13 @@ to correct the ZIP or supply a full address. This provider returns locality
 coordinates, not a precise ZIP centroid; forecasts are approximate for the area.
 Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
 30-minute weather cache. Location attribution includes GeoNames.
+
+## ZIP locality suggestions
+
+With JavaScript enabled, entering five ZIP digits (or ZIP+4) displays a selectable
+city/state suggestion after a short delay. Selecting it submits the weather form;
+manual submission and full street addresses still work without JavaScript.
+Suggestions are ZIP lookups, not street-address autocomplete. The endpoint
+`GET /zip-lookup?zip=02108` accepts only five digits, caches successful locality
+lookups for one hour and never fetches weather. Failures leave manual search usable.
+ZIP results display city/state as the heading and ZIP separately below it.
