@@ -14,14 +14,16 @@
       <%= form_with url: forecasts_path, method: :post, local: true, class: "search-form" do |form| %>
         <%= form.label :address, "Address or ZIP code" %>
         <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a street address with city and state.</p>
-        <%= form.text_field :address, value: @address, required: true, maxlength: 300,
-          placeholder: "20233 or 4600 Silver Hill Rd, Washington, DC",
-          data: { zip_lookup_url: zip_lookup_path },
-          autocomplete: "off", autofocus: @error.present?,
-          aria: { describedby: @error ? "address-help search-error" : "address-help",
-                  invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
-        <div id="zip-suggestion" class="zip-suggestion" hidden></div>
-        <div id="zip-selection" class="zip-selection" hidden></div>
+        <div class="address-control">
+          <%= form.text_field :address, value: @address, required: true, maxlength: 300,
+            placeholder: "20233 or 4600 Silver Hill Rd, Washington, DC",
+            data: { zip_lookup_url: zip_lookup_path },
+            autocomplete: "off", autofocus: @error.present?,
+            aria: { describedby: @error ? "address-help search-error" : "address-help",
+                    invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
+          <div id="zip-suggestion" class="zip-suggestion" hidden></div>
+          <div id="zip-selection" class="zip-selection" hidden></div>
+        </div>
         <p id="zip-status" class="field-help" role="status" aria-live="polite"></p>
         <% if @error %>
           <div class="error-message" id="search-error" role="alert">

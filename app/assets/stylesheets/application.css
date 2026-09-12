@@ -61,10 +61,15 @@ h1 { font-size: clamp(40px, 4.8vw, 60px); font-weight: 600; line-height: 1.07; l
   .forecast-panel { padding: 24px; min-height: 370px; }
 }
 
-.zip-suggestion { margin-top: 8px; }
-.zip-option { width: 100%; text-align: left; padding: 14px; border: 1px solid #a8b8b0; border-radius: 9px; background: #eaf1e9; color: #183b38; font: inherit; font-size: 14px; line-height: 1.5; cursor: pointer; }
-.zip-option:hover { background: #dce9dc; }
+/* Keep the input, suggestion and selected locality within one field. */
+.address-control { border: 1px solid #a8b8b0; border-radius: 9px; background: #fff; }
+.address-control:focus-within { border-color: #956313; outline: 2px solid #956313; outline-offset: 2px; }
+.address-control:has([aria-invalid="true"]) { border-color: #a12f24; }
+.search-form .address-control input[type="text"] { border: 0; background: transparent; }
+.address-control input:focus-visible { outline: none; }
+.zip-suggestion { border-top: 1px solid #e0e7e1; padding: 4px; }
+.zip-option { width: 100%; text-align: left; padding: 10px; border-radius: 5px; background: #f2f6f1; color: #183b38; font: inherit; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.zip-option:hover, .zip-option[aria-selected="true"] { background: #e3ede1; }
+.zip-option[aria-selected="true"] { box-shadow: inset 3px 0 #214e44; }
+.zip-selection:not([hidden]) { border-top: 1px solid #e0e7e1; padding: 10px 14px; color: #526864; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 #zip-status:empty { display: none; }
-
-.zip-option[aria-selected="true"] { background: #dce9dc; outline: 2px solid #214e44; outline-offset: -2px; }
-.zip-selection:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 12px; background: #eaf1e9; border-radius: 8px; font-size: 13px; line-height: 1.5; }
