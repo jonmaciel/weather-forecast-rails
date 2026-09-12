@@ -1,0 +1,13 @@
+/.bundle
+/vendor/bundle
+/.env
+/.env.*
+!/.env.example
+/config/master.key
+/config/credentials/*.key
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+/public/assets
+/.DS_Store
