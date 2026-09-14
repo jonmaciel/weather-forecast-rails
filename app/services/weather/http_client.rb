@@ -29,7 +29,7 @@ module Weather
       data
     rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout
       raise Error.new("provider_timeout", "A weather service took too long to respond. Please try again.", status: :gateway_timeout)
-    rescue JSON::ParserError, TypeError
+    rescue JSON::ParserError, TypeError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Zlib::Error
       raise Error.new("invalid_provider_response", "A weather service returned an invalid response.")
     rescue SocketError, SystemCallError, IOError, OpenSSL::SSL::SSLError, Net::ProtocolError
       raise Error.new("provider_unavailable", "A weather service could not be reached. Please try again later.")

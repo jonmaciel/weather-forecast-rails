@@ -51,6 +51,14 @@ Chrome; Selenium may download its matching driver on the first run. To avoid hos
 browser dependencies, run `bin/docker-ci`: its dedicated test image includes both
 Chromium and ChromeDriver. Application runtime still needs no browser or Node.js.
 
+Regression tests combine manual addresses, ZIP/ZIP+4 and selected locations with
+cache reuse, exact expiration, failed refreshes and recovery. They also verify
+that cached weather cannot bypass invalid selections, provider transport failures
+remain controlled, and missing or forged CSRF tokens are rejected. Browser tests
+cover retrying weather outages and replacing expired selections. Provider calls
+are stubbed and TTL tests use a controlled clock, so API availability does not
+determine whether the suite passes.
+
 ## Current scope
 
 The application uses ERB, plain CSS and a small JavaScript autocomplete,

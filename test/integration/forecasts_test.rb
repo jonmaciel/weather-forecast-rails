@@ -348,7 +348,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_requested place, times: 2
     assert_requested another_request, times: 1
     assert_requested weather, times: 1
-    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
     assert_not_requested :get, /geocoding.geo.census.gov/
   end
 
@@ -361,7 +361,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_error :unprocessable_content, "invalid_zip_selection"
     assert response.parsed_body.dig("error", "message").present?
     assert_requested request, times: 1
-    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
     assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
   end
 

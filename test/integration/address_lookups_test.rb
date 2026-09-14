@@ -96,7 +96,7 @@ class AddressLookupsTest < ActionDispatch::IntegrationTest
   end
 
   test "invalid address queries do not reach providers" do
-    [ nil, "  ", "short", "123456", "a" * 301, [ @query ], { address: @query } ].each do |address|
+    [ nil, "  ", "short", "123456", "a" * 301, " " * 301 + @query, [ @query ], { address: @query } ].each do |address|
       post address_lookup_path, params: { address: address }, as: :json
       assert_response :unprocessable_content
       assert response.parsed_body.dig("error", "code").present?

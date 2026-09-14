@@ -26,6 +26,13 @@ also includes territories, but our initial scope is narrower. Reject missing
 ZIPs, unsupported states, no matches, and ambiguous matches with actionable
 messages; never silently select an arbitrary candidate.
 
+Reject a confirmed street-direction conflict with `address_mismatch` (422), such
+as `600 N Clark St` being returned as `600 S Clark St`. The guard compares an
+explicit direction after the house number only when the remaining street name
+matches Census's structured fields. It accepts equivalent abbreviations and
+preserves street names such as `North Avenue`. This is a conservative check,
+not complete address validation; missing optional fields do not imply a conflict.
+
 Source: [Census API documentation](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html).
 
 ### Address suggestions: Photon
@@ -132,7 +139,8 @@ submitted ZIP/country. Invalid suggestion prefixes use `invalid_zip_prefix`.
 Street queries outside 6–300 characters or without a letter return
 `invalid_address_query` (422); invalid, forged or expired street selections return
 `invalid_address_selection` (422), without falling back to Census.
-Malformed provider payloads use `invalid_provider_response` (502), other provider
+Malformed provider payloads, HTTP responses and compressed bodies use
+`invalid_provider_response` (502), other provider
 failures return 502, rate limits 503, and timeouts 504. The HTTP adapter retains
 the upstream status internally as `provider_status`: the ZIP client translates
 `/get` HTTP 400 for an unknown ID into `invalid_zip_selection`, while outages and
@@ -183,3 +191,11 @@ Open-Meteo using those coordinates. Integration and browser tests also cover pro
 cache reuse between addresses, ZIP isolation, expiration at 30 minutes without
 sliding renewal, and recovery after errors. Broader address coverage is not
 guaranteed by the live example.
+
+Combined regressions exercise all input paths against one ZIP cache, failed
+refreshes followed by recovery, and expired or tampered selections while weather
+is still cached. Browser regressions verify that retries preserve the chosen
+address and that an expired selection can be replaced. Request-integrity tests
+enable Rails CSRF protection explicitly and restore the test configuration after
+each case. Transport tests cover connection, TLS, timeout, malformed HTTP and
+decompression failures without real provider calls.

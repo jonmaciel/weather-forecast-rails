@@ -10,8 +10,8 @@ module Weather
     end
 
     def call(address)
-      unless address.is_a?(String) && address.strip.length.between?(6, 300) && address.match?(/[[:alpha:]]/)
-        raise Error.new("invalid_address_query", "Enter at least six characters of a street address.", status: :unprocessable_content)
+      unless address.is_a?(String) && address.length <= 300 && address.strip.length >= 6 && address.match?(/[[:alpha:]]/)
+        raise Error.new("invalid_address_query", "Enter a street address of 6 to 300 characters.", status: :unprocessable_content)
       end
 
       query = address.strip.gsub(/\s+/, " ")

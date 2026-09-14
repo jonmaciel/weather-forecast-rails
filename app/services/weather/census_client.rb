@@ -2,6 +2,12 @@ module Weather
   class CensusClient
     ENDPOINT = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
     STATES = %w[AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY].freeze
+    DIRECTIONS = {
+      "N" => "N", "NORTH" => "N", "S" => "S", "SOUTH" => "S",
+      "E" => "E", "EAST" => "E", "W" => "W", "WEST" => "W",
+      "NE" => "NE", "NORTHEAST" => "NE", "NW" => "NW", "NORTHWEST" => "NW",
+      "SE" => "SE", "SOUTHEAST" => "SE", "SW" => "SW", "SOUTHWEST" => "SW"
+    }.freeze
 
     def initialize(http: HttpClient.new)
       @http = http
@@ -33,10 +39,33 @@ module Weather
       raise TypeError unless latitude.is_a?(Numeric) && latitude.finite? && latitude.between?(-90, 90)
       raise TypeError unless longitude.is_a?(Numeric) && longitude.finite? && longitude.between?(-180, 180)
       raise TypeError unless label.is_a?(String) && label.present?
+      validate_direction!(address, components)
 
       { address: label, country: "US", postal_code: zip[0, 5], latitude: latitude, longitude: longitude }
     rescue KeyError, TypeError, NoMethodError
       raise Error.new("invalid_provider_response", "The address service returned an invalid response.")
+    end
+
+    private
+
+    def validate_direction!(address, components)
+      direction = components["preDirection"]
+      street_name = components["streetName"]
+      raise TypeError unless [ direction, street_name ].all? { |value| value.nil? || value.is_a?(String) }
+      return if direction.blank? || street_name.blank?
+
+      matched_direction = DIRECTIONS[direction.upcase.delete(". ")]
+      raise TypeError unless matched_direction
+
+      words = address.split(",", 2).first.upcase.delete(".").split
+      return unless words.shift&.match?(/\A\d+[A-Z]?\z/)
+      requested_direction = DIRECTIONS[words.shift]
+      name_words = street_name.upcase.delete(".").split
+      # Match the remaining street name so "North Avenue" is not read as a direction.
+      return unless requested_direction && words.first(name_words.length) == name_words
+      return if requested_direction == matched_direction
+
+      raise Error.new("address_mismatch", "The address service matched a different street direction. Confirm the address or select an autocomplete suggestion.", status: :unprocessable_content)
     end
   end
 end

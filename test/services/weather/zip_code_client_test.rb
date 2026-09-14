@@ -43,7 +43,7 @@ class Weather::ZipCodeClientTest < ActiveSupport::TestCase
       stub_location(payload, id: "5110302")
       assert_selection_error { @client.lookup("11201", location_id: "5110302") }
     end
-    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
   end
 
   test "malformed location responses produce controlled provider errors" do
@@ -54,7 +54,7 @@ class Weather::ZipCodeClientTest < ActiveSupport::TestCase
       assert_equal "invalid_provider_response", error.code
       assert_equal :bad_gateway, error.status
     end
-    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
   end
 
   test "an unknown provider ID is a selection error while outages and rate limits remain provider errors" do
@@ -67,7 +67,7 @@ class Weather::ZipCodeClientTest < ActiveSupport::TestCase
       assert_equal code, error.code
       assert_equal expected_status, error.status
     end
-    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
   end
 
   test "suggestions validate provider IDs and coordinates before offering a locality" do
