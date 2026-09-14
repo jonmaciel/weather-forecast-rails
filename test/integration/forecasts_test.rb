@@ -173,13 +173,14 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     query
 
     @match["addressComponents"]["zip"] = "02109"
-    stub_census
-    query
+    second_address = "123 Main St, Boston, MA 02109"
+    stub_census(address: second_address)
+    post forecasts_path, params: { address: second_address }, as: :json
     assert_equal false, response.parsed_body.fetch("from_cache")
     assert_equal "02109", response.parsed_body.dig("location", "postal_code")
     assert_requested weather, times: 2
 
-    query
+    post forecasts_path, params: { address: second_address }, as: :json
     assert_equal true, response.parsed_body.fetch("from_cache")
     assert_requested weather, times: 2
   end
@@ -284,7 +285,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
       assert_equal "Boston, Massachusetts 02108", response.parsed_body.dig("location", "address")
       assert_equal true, response.parsed_body.fetch("from_cache")
     end
-    assert_requested zip_request, times: 2
+    assert_requested zip_request, times: 1
     assert_requested weather, times: 1
     assert_requested :get, /geocoding.geo.census.gov/, times: 1
   end
@@ -315,7 +316,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
         assert_select "input#selected_label[value=?]", label
       end
     end
-    assert_requested zip_request, times: 4
+    assert_requested zip_request, times: 1
     assert_requested weather, times: 1
     assert_not_requested :get, /geocoding.geo.census.gov/
   end
@@ -345,7 +346,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_equal true, response.parsed_body.fetch("from_cache")
     assert_equal "Another locality, Massachusetts", response.parsed_body.dig("location", "display_name")
     assert_equal 42.361, response.parsed_body.dig("location", "latitude")
-    assert_requested place, times: 2
+    assert_requested place, times: 1
     assert_requested another_request, times: 1
     assert_requested weather, times: 1
     assert_not_requested :get, /\A#{Regexp.escape(Weather::ZipCodeClient::ENDPOINT)}(?:\?|\z)/
@@ -395,7 +396,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
       post forecasts_path, params: { address: "123 Main St, Boston, MA 02108", selected_zip: zip, selected_label: "123 Main St, Boston, MA 02108" }, as: :json
       assert_response :success
     end
-    assert_requested census, times: 4
+    assert_requested census, times: 1
     assert_not_requested :get, /geocoding-api\.open-meteo\.com/
   end
 

@@ -24,10 +24,8 @@ module Weather
     end
 
     def lookup(zip, location_id: nil)
+      validate_location_id!(location_id)
       unless location_id.nil?
-        unless location_id.is_a?(String) && location_id.match?(/\A[1-9]\d{0,9}\z/) && location_id.to_i <= MAX_LOCATION_ID
-          raise invalid_selection
-        end
         match = @http.get(LOCATION_ENDPOINT, id: location_id)
         raise invalid_selection if match.empty?
         location = location_from(match, zip)
@@ -54,6 +52,14 @@ module Weather
       raise
     rescue KeyError, TypeError
       raise Error.new("invalid_provider_response", "The ZIP lookup service returned an invalid response.")
+    end
+
+    def validate_location_id!(location_id)
+      return if location_id.nil?
+
+      unless location_id.is_a?(String) && location_id.match?(/\A[1-9]\d{0,9}\z/) && location_id.to_i <= MAX_LOCATION_ID
+        raise invalid_selection
+      end
     end
 
     private

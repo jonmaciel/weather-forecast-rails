@@ -157,10 +157,19 @@ under a versioned key containing provider, country, ZIP and unit. Different
 addresses in the same ZIP reuse the first successful forecast in that window;
 this is a deliberate area-level approximation even when locations within that
 ZIP have different coordinates. Keep the current matched location outside that
-shared payload. Before checking the weather cache, manual input and selected ZIPs
-use their geocoder; selected street tokens are verified locally. Consequently, a
-geocoder failure can block a cached forecast for manual/ZIP input, while a valid
-street token requires no second geocoding call.
+shared payload. `LocationResolver` validates inputs and resolves locations before
+the weather cache is checked. Successful Census and ZIP resolutions use separate
+`location/v1` entries for one hour, without sliding renewal. Manual-address keys
+include the provider and a SHA-256 digest of the trimmed, collapsed-whitespace,
+lowercase input; number, direction, city, state and ZIP remain part of that identity.
+ZIP keys include the provider, five-digit ZIP and either the selected locality ID
+or a distinct search marker. Malformed IDs are rejected before a cache read;
+provider validation binds a selected ID to its ZIP before the result is stored.
+Only successful resolutions are cached, never ambiguous, missing or invalid matches.
+This trusts validated geographic data for one hour and lets known inputs survive a
+geocoder outage; unknown, expired or evicted inputs still depend on the provider.
+Signed street tokens bypass this cache and are verified on every request, including
+their expiry and exact display label. No token check is skipped for cached weather.
 Do not cache errors; derive the cache indicator separately for each request.
 The weather cache remains schema `v2`; ZIP suggestion entries use `v2` and are
 cached by prefix for one hour. Address suggestions use a separate `v1` cache,
@@ -171,10 +180,19 @@ is an accepted geographic-data approximation for the demo, independent of the
 30-minute weather TTL.
 
 Rails.cache uses process-local memory. Restarting loses entries and multiple
-processes do not share them. Concurrent misses may each request fresh weather;
-there is no lock or request coalescing, and each reports `from_cache: false`.
-Reads do not renew the 30-minute TTL. No database is needed. Shared caching and
-request coalescing are deferred until deployment or traffic requires them.
+processes do not share them. A shared `RequestCoalescer` coordinates weather calls
+by cache instance and forecast key within one process. The leader checks the cache
+inside the coordinated operation, preventing duplicate cold or expired refreshes;
+unrelated keys run concurrently. Callers already waiting share the value or error.
+Waiting has a monotonic 15-second deadline and does not cancel the leader; completed
+entries are removed so failures remain retryable. The weather provider's existing
+network timeouts still apply to the leader. Geocoding misses are not coalesced.
+The request that fetches weather reports `from_cache: false`; reuse by a waiting
+caller reports `true`, with each request retaining its own location metadata.
+Reads do not renew the 30-minute TTL and expired weather is never served. In
+particular, `race_condition_ttl` is not used because it permits stale responses and
+does not coordinate a first cold miss. No database is needed. Shared caching and
+coordination across processes remain a deployment decision.
 
 Use POST with Rails CSRF protection for street suggestions and forecasts, keeping
 addresses out of application URLs. Filter addresses, labels and tokens from logs.
@@ -199,3 +217,15 @@ address and that an expired selection can be replaced. Request-integrity tests
 enable Rails CSRF protection explicitly and restore the test configuration after
 each case. Transport tests cover connection, TLS, timeout, malformed HTTP and
 decompression failures without real provider calls.
+
+Location-cache regressions verify reuse during geocoder outages, normalization,
+fixed one-hour expiry, ZIP/locality isolation and rejection of invalid selections
+with warm caches. Threaded tests use queues and bounded joins to verify overlapping
+calls across separate service instances: one weather request for a cold or exactly
+expired ZIP, independent work for other ZIPs/cache stores, shared failures and
+recovery. Coalescer tests also cover waiter timeouts and leader termination cleanup.
+
+Browser tests use Capybara's native Chrome visibility option. During verification,
+Selenium's JavaScript visibility atom intermittently reported invalid DOM references
+as unknown driver errors; the native endpoint passed the same browser suite without
+adding sleeps or retries to the tests.

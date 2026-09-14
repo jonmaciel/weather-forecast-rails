@@ -58,6 +58,9 @@ remain controlled, and missing or forged CSRF tokens are rejected. Browser tests
 cover retrying weather outages and replacing expired selections. Provider calls
 are stubbed and TTL tests use a controlled clock, so API availability does not
 determine whether the suite passes.
+Location-cache tests cover geocoder outages, fixed one-hour expiry and locality
+isolation. Threaded tests coordinate overlapping requests to verify one weather
+lookup, shared failures, bounded waiting and independent ZIPs/cache instances.
 
 ## Current scope
 
@@ -120,20 +123,28 @@ Open-Meteo again. Reads do not extend expiration. After expiration, the next
 request retrieves fresh weather. Errors are never cached or replaced by expired
 weather. The key includes a schema version, provider, country, ZIP and unit.
 
-Before reading the weather cache, manual addresses and ZIPs are resolved through
-their geocoder; selected street addresses are verified locally using a signed,
-expiring token. They keep the chosen Photon location instead of being matched
-again by Census. A geocoder failure can still prevent a response for manual or
-ZIP input even when weather is cached. Inputs
-sharing a ZIP reuse weather from the first successful lookup in that window,
+Before reading the weather cache, the app resolves the input's location. Successful
+manual-address and ZIP resolutions have a separate, fixed one-hour cache, so
+repeated searches can work during a geocoder outage. New inputs and expired or
+evicted locations still need the geocoder. Address keys normalize case and
+whitespace and use a digest; ZIP keys distinguish unselected searches from each
+selected locality ID. Only validated locations are stored, and malformed IDs are
+rejected before reading this cache. Selected street addresses always have their
+signed token and expiry checked locally; they keep the chosen Photon location.
+Inputs sharing a ZIP reuse weather from the first successful lookup in that window,
 even when their resolved coordinates differ. This is a deliberate approximation
 for the ZIP area. ZIPs are normalized to five digits, preserving leading zeros.
 
 The in-memory cache is per process, may evict entries under memory pressure, and
 is lost on restart. Run repeated requests against the same server to see cache
-hits; separate `rails runner` invocations do not share a cache. Simultaneous cold
-requests may both call the weather provider; request coalescing is not implemented.
-The UI displays "Just fetched" on a miss and "From cache" on a hit.
+hits; separate `rails runner` invocations do not share a cache. Within one process,
+simultaneous weather misses for the same key share an in-flight request, including
+its failure. Waiting callers time out after 15 seconds without canceling the
+original request. Completion releases the coordination entry, and a later request
+can retry a failure. Different ZIPs can fetch weather concurrently; geocoder
+misses are not coalesced. The caller that fetches fresh weather reports
+`from_cache: false`; callers reusing its result report `true`. The UI displays
+"Just fetched" and "From cache", respectively.
 
 ## Browser workflow
 

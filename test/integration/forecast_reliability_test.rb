@@ -60,7 +60,7 @@ class ForecastReliabilityTest < ActionDispatch::IntegrationTest
 
     assert_requested weather, times: 1
     assert_requested @census, times: 1
-    assert_requested @zip_lookup, times: 2
+    assert_requested @zip_lookup, times: 1
     assert_requested @selected_zip_lookup, times: 1
     assert_requested @photon, times: 1
   end
@@ -133,7 +133,7 @@ class ForecastReliabilityTest < ActionDispatch::IntegrationTest
       assert_equal 42.36, reused.dig("location", "latitude")
       assert_requested recovered_weather, times: 2 # The matching timeout and subsequent success.
       assert_requested :get, /api\.open-meteo\.com\/v1\/forecast/, times: 4
-      assert_requested @census, times: 2
+      assert_requested @census, times: 1
       assert_requested @zip_lookup, times: 1
       assert_requested @selected_zip_lookup, times: 1
       assert_requested @photon, times: 1
