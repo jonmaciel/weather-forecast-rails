@@ -27,15 +27,23 @@ docker compose down
 bin/docker-ci
 ```
 
-This builds the test target, runs the suite, RuboCop and Brakeman without network
-access, builds the production image, and checks health, HTML, compiled CSS,
+This builds the test target, runs integration tests, browser tests, RuboCop and Brakeman without
+network access, builds the production image, and checks health, navigation, HTML, compiled CSS and JavaScript,
 non-root execution and absence of the local master key. It removes its own
 smoke-test container on exit. The script does not publish images or deploy.
 The GitHub Actions Docker workflow runs this same script on Linux/amd64.
 Dependency vulnerability auditing remains in the existing CI workflow and needs
 network access to maintain its advisory database.
 
-The first build downloads the base image, OS packages and locked gems. Runtime
+The first build downloads the base image, OS packages and locked gems. The
+`system-test` target additionally installs Chromium and its matching driver; those
+packages never enter the production image. Run only browser tests with:
+
+```sh
+docker build --target system-test -t weather-forecast:system-test .
+docker run --rm --network none --shm-size=256m weather-forecast:system-test
+```
+ Runtime
 weather lookups require HTTPS egress to Census and Open-Meteo (weather and geocoding). Tests mock those APIs.
 
 ## Production image

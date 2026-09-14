@@ -1,6 +1,6 @@
 # Integration decisions
 
-Date: 2026-09-12. Status: address lookup, current weather, 30-minute cache and HTML interface implemented.
+Date: 2026-09-12. Status: address lookup, current and daily weather, 30-minute cache and HTML interface implemented.
 
 ## Scope
 
@@ -42,10 +42,14 @@ Source: [Geocoding API](https://open-meteo.com/en/docs/geocoding-api).
 ### Weather: Open-Meteo
 
 Use `https://api.open-meteo.com/v1/forecast` with the resolved latitude/longitude,
-`current=temperature_2m`, `temperature_unit=fahrenheit`, and `timezone=auto`.
+`current=temperature_2m`, `daily=temperature_2m_max,temperature_2m_min`,
+`forecast_days=1`, `temperature_unit=fahrenheit`, and `timezone=auto`.
 Keep the returned timestamp and unit alongside the temperature. Current values
 are model-derived conditions; do not describe them as direct station readings.
-Daily maximum/minimum can be added later.
+Current conditions and daily maximum/minimum share one HTTP request and the same
+30-minute cache. Validate numeric bounds, units and the local daily date; display
+that explicit date even when a cached forecast crosses midnight. The cache schema
+is versioned to avoid reading older payloads without daily data.
 
 The free endpoint needs no key for non-commercial use, allows 10,000 calls/day,
 and has no uptime guarantee. This choice assumes a non-commercial local demo.
@@ -81,6 +85,9 @@ under a versioned key containing provider, country, ZIP and unit. Different
 addresses in the same ZIP reuse the first successful forecast in that window;
 this is a deliberate area-level approximation. Keep the current matched address
 outside that shared payload. The appropriate geocoder still runs before the weather-cache lookup.
+The UI sends a selected ZIP separately from its label; editing clears the
+selection. The forecast service accepts only ZIPs or street addresses and has no
+knowledge of label formatting.
 Do not cache errors; derive the cache indicator separately for each request.
 
 Rails.cache uses process-local memory for local development. Restarting loses
@@ -95,7 +102,7 @@ to the geocoder, and only coordinates to the weather API. Do not persist searche
 A live smoke check on 2026-09-12 resolved the Census documentation's public
 example address (4600 Silver Hill Rd, Washington, DC 20233), returned ZIP 20233
 and coordinates, and retrieved a numeric current temperature in Fahrenheit from
-Open-Meteo using those coordinates. Automated tests also cover provider failures, invalid inputs and payloads,
+Open-Meteo using those coordinates. Integration and browser tests also cover provider failures, invalid inputs and payloads,
 cache reuse between addresses, ZIP isolation, expiration at 30 minutes without
 sliding renewal, and recovery after errors. Broader address coverage is not
 guaranteed by the live example.

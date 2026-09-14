@@ -1,10 +1,13 @@
 # Weather Forecast
 
-A Ruby on Rails application for a weather forecast interface.
+A Ruby on Rails weather app with address/ZIP lookup, current temperature, daily
+high/low, and a 30-minute forecast cache by ZIP.
 
 ## Quick start with Docker
 
 ```sh
+git clone https://github.com/jonmaciel/weather-forecast.git
+cd weather-forecast
 docker compose up --build --wait
 ```
 
@@ -36,17 +39,23 @@ Run all commands from the project directory. rbenv selects Ruby using `.ruby-ver
 
 ```sh
 bin/rails test
+bin/rails test:system
 bin/rails zeitwerk:check
 bin/rubocop
 bin/brakeman --no-pager
 bin/bundler-audit
 ```
 
+The browser suite uses Capybara/Selenium and Chrome or Chromium. On a host, install
+Chrome; Selenium may download its matching driver on the first run. To avoid host
+browser dependencies, run `bin/docker-ci`: its dedicated test image includes both
+Chromium and ChromeDriver. Application runtime still needs no browser or Node.js.
+
 ## Current scope
 
-The initial setup includes a Rails application, a home page rendered with ERB,
-plain CSS and the standard Rails quality tools and CI. Active Record is disabled.
-Address lookup and current weather retrieval are available through `POST /forecasts`.
+The application uses ERB, plain CSS and a small JavaScript autocomplete,
+with Rails quality tools and CI. Active Record is disabled.
+Address lookup and current/daily weather retrieval are available through `POST /forecasts`.
 Successful forecasts are cached by ZIP for 30 minutes. The responsive ERB
 interface includes an address form, results, cache status and recoverable errors.
 No API credentials are needed for the non-commercial demo.
@@ -74,17 +83,19 @@ bin/rails runner 'puts Weather::Forecast.new.call(address: "4600 Silver Hill Rd,
 
 The service accepts full addresses or ZIP codes in the 50 US states and
 Washington, DC and returns Fahrenheit. Street addresses use Census; ZIP-only
-queries use Open-Meteo geocoding. Both paths use Open-Meteo for current conditions. Network access is required for live requests only.
+queries use Open-Meteo geocoding. Both paths use one Open-Meteo request for current conditions and daily high/low. Network access is required for live requests only.
 
 `POST /forecasts` accepts an `address` parameter and returns `location` and
-`current` JSON objects plus a boolean `from_cache` indicator. The endpoint retains Rails CSRF protection. The HTML form includes the session's
+`current` and `daily` JSON objects plus a boolean `from_cache` indicator. The endpoint retains Rails CSRF protection. The HTML form includes the session's
 CSRF token; JSON callers must also provide it. Use `Accept: application/json`
 (or `/forecasts.json`) for JSON; HTML submissions render the results page.
 Errors return `{ "error": { "code": "...", "message": "..." } }` with HTTP 422
 for invalid or unresolved addresses, 502 for provider failures, 503 for provider
 rate limits, and 504 for timeouts. HTTP responses remain `no-store` so browsers
 do not retain address-specific results; the server caches only weather data.
-Address parameters are filtered from logs.
+Address parameters and the selected display label are filtered from logs.
+Opening `GET /forecasts` redirects to the form (303) instead of returning a routing
+error; weather queries continue to use POST so addresses stay out of URLs.
 
 Tests use WebMock and block external HTTP requests. The JSON gem is constrained
 to version 2.x because Rails 8.1.3.1 passes positional parser options that JSON 3
@@ -113,8 +124,9 @@ The UI displays "Just fetched" on a miss and "From cache" on a hit.
 ## Browser workflow
 
 Open http://localhost:3000, enter a US address or ZIP code and submit the form.
-The result shows the matched location, temperature in Fahrenheit, conditions time
-and timezone. Submit again to see the cache indicator. Invalid addresses and
+The result shows the matched location, temperature in Fahrenheit, daily high/low,
+conditions time and timezone. The daily forecast has an explicit local date, so a
+cached result near midnight is not misleadingly labeled “today”. Submit again to see the cache indicator. Invalid addresses and
 provider failures preserve the input so it can be corrected or retried.
 
 The page uses server-rendered ERB and CSS, supports form submission without JavaScript, and stacks
@@ -138,18 +150,45 @@ Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
 
 ## ZIP locality suggestions
 
-With JavaScript enabled, entering five ZIP digits (or ZIP+4) displays a selectable
-city/state suggestion after a short delay. Selecting it confirms the locality without submitting the weather form;
-manual submission and full street addresses still work without JavaScript.
-Suggestions are ZIP lookups, not street-address autocomplete. The endpoint
-`GET /zip-lookup?zip=02108` accepts only five digits, caches successful locality
-lookups for one hour and never fetches weather. Failures leave manual search usable.
-ZIP results display city/state as the heading and ZIP separately below it.
+With JavaScript enabled, entering three to five ZIP digits (or ZIP+4) displays up to
+five suggestions after a 300 ms delay. Each option shows the city/state and ZIP.
+The list is attached to the input and scrolls independently without shifting the page.
+Selecting an option fills the input with a readable locality, such as
+`Athens, Tennessee 37303`, and closes the list without submitting the weather form.
+There is no separate selection card or Change action: edit the input directly.
 
-Keyboard interaction: Down/Up highlight the ZIP suggestion while focus stays in
-the input. Enter confirms it; Tab confirms and advances focus; Right confirms
-only at the end of the input with no selected text. Escape dismisses suggestions.
-After selection, edit the ZIP directly in the input to clear the selection and
-request a new suggestion. There is no separate Change action.
-The normal search button (or Enter after selection) submits the forecast request.
-Stale requests are cancelled and ignored, and composition input is respected.
+The form submits `selected_zip` separately from the visible label, with
+`selected_label` recording its unchanged value. The controller uses the selected
+ZIP only while the label matches that snapshot and the ZIP has a valid format.
+Editing clears both fields; the server also ignores stale/malformed selection
+metadata. The service resolves the ZIP with the provider and never parses the
+display label. ZIP+4 is retained in the input and normalized for weather lookup.
+
+Plain ZIPs, full street addresses and resubmitting a selection rendered by the
+server work without JavaScript. Copying just the city/state label into a new
+form does not carry its ZIP selection: enter the ZIP or a full street address.
+A ZIP identifies a locality; selecting one does not supply a street or number.
+
+Keyboard interaction: Down/Up navigate suggestions while focus stays in the input.
+Enter confirms the highlighted option (or the first option); Tab confirms and
+advances focus; Right confirms only at the end of the input with no selected text.
+Escape dismisses the list. The search button (or Enter after selection) submits the
+forecast request. Editing discards the current selection. Stale requests are
+cancelled and ignored, and composition input is respected.
+
+`GET /zip-lookup?zip=021` accepts three to five digits and returns up to five ZIPs
+from Open-Meteo. Results, including empty lists, are cached by prefix for one hour;
+suggestions never fetch weather. Failures leave manual search usable. Provider
+coverage is not an exhaustive USPS directory or street-address autocomplete.
+
+The interaction draws on the editable selection in
+[Google Places autocomplete](https://developers.google.com/maps/documentation/javascript/place-autocomplete-overview)
+and the manual-entry fallback in the
+[GOV.UK address pattern](https://design-system.service.gov.uk/patterns/addresses/).
+These are UX references; the app continues to use its existing providers.
+
+## Delivery
+
+See [submission notes](docs/submission.md) for the final review checklist and a
+suggested walkthrough. The repository contains application code and documentation;
+no external assignment documents are needed to run it.
