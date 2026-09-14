@@ -59,9 +59,10 @@ Use `https://geocoding-api.open-meteo.com/v1/search` with the normalized ZIP,
 `countryCode=US`, `count=100`, `language=en` and `format=json`. Require the exact
 ZIP in the result's `postcodes` and country US. With no selection, reject no matches
 and multiple matches instead of choosing an arbitrary location. For a selected
-locality, resolve its provider ID through `/v1/get?id=...`, then verify the exact
-ID, country and ZIP membership. This avoids depending on the search result limit
-when resolving a previously selected locality. Validate label and coordinates in
+locality without a cached resolution, resolve its provider ID through
+`/v1/get?id=...`, then verify the exact ID, country and ZIP membership. This avoids
+depending on the search result limit when resolving a previously selected locality.
+Validate label and coordinates in
 both paths. Coordinates represent the associated locality, not the precise ZIP
 centroid. Coverage is provider-dependent; users can select a suggestion or try a
 full address if a plain ZIP is ambiguous. GeoNames attribution is shown.
@@ -125,8 +126,10 @@ the location without parsing a locality label.
 
 The form carries `selected_zip`/`selected_location_id` or `selected_address_token`,
 plus a `selected_label` snapshot. Editing clears all metadata. The controller
-forwards a selection only for an unchanged label. The ZIP client revalidates its
-ID and ZIP with the provider, rejecting malformed IDs before a network request.
+forwards a selection only for an unchanged label. For ZIP selections, malformed
+IDs are rejected before reading the one-hour location cache. On a cache miss, the
+ZIP client validates the ID, country and ZIP with the provider; successful
+resolutions are reused until expiry or eviction.
 Street tokens use Rails' message verifier with purpose `address_selection` and
 one-hour expiration; verification also compares the signed address with the input.
 They contain only normalized location data and provide integrity, not encryption.

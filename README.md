@@ -6,8 +6,8 @@ high/low, and a 30-minute forecast cache by ZIP.
 ## Quick start with Docker
 
 ```sh
-git clone https://github.com/jonmaciel/weather-forecast.git
-cd weather-forecast
+git clone https://github.com/jonmaciel/weather-forecast-rails.git
+cd weather-forecast-rails
 docker compose up --build --wait
 ```
 
@@ -193,10 +193,13 @@ reduced-motion preferences.
 
 ZIP selection uses `selected_zip` and `selected_location_id`; street selection uses
 `selected_address_token`. Both retain a `selected_label` snapshot, and editing
-clears selection metadata. The server revalidates a selected ZIP with its provider
-or verifies the street token and its exact address label. Tokens expire after one
-hour and are signed, not encrypted. Invalid or expired selections return a
-recoverable error. ZIP+4 is retained in the input and normalized for weather lookup.
+clears selection metadata. The server rejects malformed ZIP locality IDs before
+reading the location cache. It reuses a validated ZIP/locality pair for up to one
+hour; a cache miss checks the ID, country and ZIP against the provider. Street
+tokens and their exact address labels are verified on every submission. Tokens
+expire after one hour and are signed, not encrypted. Invalid or expired selections
+return a recoverable error. ZIP+4 is retained in the input and normalized for
+weather lookup.
 
 Plain ZIPs, full street addresses and resubmitting a selection rendered by the
 server work without JavaScript. Copying just the city/state label into a new
@@ -237,9 +240,3 @@ Loading feedback draws on [MUI Autocomplete](https://mui.com/material-ui/api/aut
 and [W3C status messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html),
 with combobox semantics from [WAI-ARIA](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
 These are UX references; the app uses the providers described above.
-
-## Delivery
-
-See [submission notes](docs/submission.md) for the final review checklist and a
-suggested walkthrough. The repository contains application code and documentation;
-no external assignment documents are needed to run it.

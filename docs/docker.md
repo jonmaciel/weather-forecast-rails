@@ -43,8 +43,10 @@ packages never enter the production image. Run only browser tests with:
 docker build --target system-test -t weather-forecast:system-test .
 docker run --rm --network none --shm-size=256m weather-forecast:system-test
 ```
- Runtime
-weather lookups require HTTPS egress to Census and Open-Meteo (weather and geocoding). Tests mock those APIs.
+
+Runtime lookups require outbound HTTPS access to Census for manual addresses,
+Open-Meteo for ZIP lookup and weather, and Photon for street-address suggestions.
+Tests mock all of these APIs.
 
 ## Production image
 
@@ -95,11 +97,14 @@ must be configured for the chosen platform; no deployment is configured here.
 
 ## Operational limits
 
-The weather cache is in-process memory and disappears on restart. Use one Puma
-process and one replica for shared ZIP reuse within this demo. Multiple replicas
-are possible but have independent caches. Before scaling, choose and configure
-a shared cache if all instances must reuse forecasts. Docker does not change
-this behavior. The free weather endpoint assumes non-commercial use; review
+Location and weather caches use in-process memory, with fixed TTLs of one hour
+and 30 minutes respectively. Entries disappear on restart or eviction. Use one
+Puma process and one replica for shared ZIP reuse within this demo. Concurrent
+weather misses share a request within that process; geocoder misses do not.
+Multiple processes and replicas have independent caches and request coordination.
+Before scaling, choose shared caching and coordination if all instances must
+reuse forecasts and avoid duplicate weather requests. Docker does not change
+these limits. The free weather endpoint assumes non-commercial use; review
 provider licensing before a commercial deployment.
 
 References: [Docker build practices](https://docs.docker.com/build/building/best-practices/),
