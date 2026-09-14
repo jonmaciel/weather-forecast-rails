@@ -20,6 +20,29 @@ class AutocompleteLoadingTest < ApplicationSystemTestCase
     Rails.cache = @previous_cache
   end
 
+  test "restored focus keeps suggestions closed until the user requests them" do
+    page.execute_script <<~JS
+      const address = document.querySelector('#address');
+      address.value = '373';
+      address.focus();
+    JS
+    assert_selector "#address:focus[aria-expanded=false]"
+    assert_no_selector "#zip-suggestion"
+    assert_equal 0, page.evaluate_script("window.autocompleteRequests.length")
+
+    address.send_keys(:arrow_down)
+    wait_for_requests(1)
+    address.send_keys(:escape)
+    assert_no_selector "#zip-suggestion"
+
+    address.click
+    wait_for_requests(2)
+    address.click
+    assert_equal false, page.evaluate_script("window.autocompleteRequests[1].signal.aborted")
+    assert_selector "#zip-suggestion #zip-feedback .zip-spinner"
+    assert_equal 2, page.evaluate_script("window.autocompleteRequests.length")
+  end
+
   test "typing replaces options with an inline loader without closing or shrinking the popup" do
     fill_in "Address or ZIP code", with: "373"
     wait_for_requests(1)

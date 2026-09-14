@@ -175,7 +175,8 @@ if (input && panel && list && feedback && feedbackMessage && spinner && status &
   input.addEventListener('input', lookup);
   input.addEventListener('compositionstart', () => { composing = true; close(); });
   input.addEventListener('compositionend', () => { composing = false; lookup(); });
-  input.addEventListener('focus', () => { if (!selected) lookup(); });
+  // Restored focus and error autofocus should not reopen suggestions.
+  input.addEventListener('click', () => { if (!selected && panel.hidden) lookup(); });
   input.addEventListener('blur', close);
   input.form.addEventListener('submit', close);
   input.addEventListener('keydown', (event) => {

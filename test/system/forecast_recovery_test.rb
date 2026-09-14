@@ -20,6 +20,36 @@ class ForecastRecoveryTest < ApplicationSystemTestCase
     Rails.cache = @previous_cache
   end
 
+  test "manual search errors and reload keep suggestions closed until requested" do
+    stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: hash_including(name: "00000")).to_return(body: {
+      results: []
+    }.to_json)
+    fill_in "Address or ZIP code", with: "00000"
+    find("#address").send_keys(:escape)
+    click_on "Check the weather"
+    assert_selector "#search-error[role=alert]"
+    assert_field "address", with: "00000"
+    assert_selector "#address:focus[role=combobox]"
+    assert_selector "#address[aria-expanded=false]"
+    assert_no_selector "#zip-suggestion"
+
+    page.refresh
+    assert_selector "#search-error[role=alert]"
+    assert_field "address", with: "00000"
+    assert_selector "#address:focus[role=combobox]"
+    assert_selector "#address[aria-expanded=false]"
+    assert_no_selector "#zip-suggestion"
+
+    address = find("#address")
+    address.send_keys(:arrow_down)
+    assert_selector "#zip-feedback", text: "No matching ZIPs found"
+    address.send_keys(:escape)
+    assert_no_selector "#zip-suggestion"
+    address.click
+    assert_selector "#zip-feedback", text: "No matching ZIPs found"
+    assert_field "address", with: "00000"
+  end
+
   test "retrying a weather outage preserves the selected address and caches only the successful forecast" do
     @weather.to_return({ status: 503 }, { body: weather_response.to_json })
     select_address
