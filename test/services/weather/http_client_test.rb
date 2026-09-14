@@ -6,6 +6,33 @@ class Weather::HttpClientTest < ActiveSupport::TestCase
     @endpoint = Weather::OpenMeteoClient::ENDPOINT
   end
 
+  test "requests use bounded connection read and write timeouts without automatic retries" do
+    http = nil
+    constructor = Net::HTTP.method(:new)
+    owns_constructor = Net::HTTP.singleton_class.instance_methods(false).include?(:new)
+    Net::HTTP.define_singleton_method(:new) do |*arguments|
+      http = constructor.call(*arguments)
+    end
+
+    request = stub_request(:get, @endpoint).to_return do
+      assert http.use_ssl?
+      assert_equal 3, http.open_timeout
+      assert_equal 10, http.read_timeout
+      assert_equal 10, http.write_timeout
+      assert_equal 0, http.max_retries
+      { body: '{"available":true}' }
+    end
+
+    assert_equal({ "available" => true }, @client.get(@endpoint, {}))
+    assert_requested request, times: 1
+  ensure
+    if owns_constructor
+      Net::HTTP.define_singleton_method(:new, constructor)
+    else
+      Net::HTTP.singleton_class.remove_method(:new)
+    end
+  end
+
   test "network and TLS failures return controlled errors without leaking upstream details" do
     [ SocketError, Errno::ECONNRESET, EOFError, OpenSSL::SSL::SSLError ].each do |failure|
       request = stub_request(:get, @endpoint).to_raise(failure.new("private upstream details"))
