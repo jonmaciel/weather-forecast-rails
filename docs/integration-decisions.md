@@ -228,7 +228,8 @@ calls across separate service instances: one weather request for a cold or exact
 expired ZIP, independent work for other ZIPs/cache stores, shared failures and
 recovery. Coalescer tests also cover waiter timeouts and leader termination cleanup.
 
-Browser tests use Capybara's native Chrome visibility option. During verification,
-Selenium's JavaScript visibility atom intermittently reported invalid DOM references
-as unknown driver errors; the native endpoint passed the same browser suite without
-adding sleeps or retries to the tests.
+Browser tests use Capybara's native Chrome visibility option. ChromeDriver can also
+report a detached node during text retrieval as an unknown inspector error. A
+test-only adapter translates that specific error into a stale-element error so
+Capybara's existing bounded synchronization can re-query the element. Other driver
+errors propagate unchanged. The tests use no fixed sleeps or whole-test retries.
