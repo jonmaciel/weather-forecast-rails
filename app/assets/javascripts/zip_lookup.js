@@ -3,8 +3,9 @@ const panel = document.querySelector('#zip-suggestion');
 const status = document.querySelector('#zip-status');
 const selectedZip = document.querySelector('#selected_zip');
 const selectedLabel = document.querySelector('#selected_label');
+const selectedLocationId = document.querySelector('#selected_location_id');
 
-if (input && panel && status && selectedZip && selectedLabel) {
+if (input && panel && status && selectedZip && selectedLabel && selectedLocationId) {
   let timer;
   let request;
   let generation = 0;
@@ -40,6 +41,7 @@ if (input && panel && status && selectedZip && selectedLabel) {
     input.value = `${selected.label} ${zip}`;
     selectedZip.value = zip;
     selectedLabel.value = input.value;
+    selectedLocationId.value = selected.location_id;
     close();
     status.textContent = 'City and ZIP selected. You can edit this field or check the weather.';
   };
@@ -49,6 +51,7 @@ if (input && panel && status && selectedZip && selectedLabel) {
     selected = undefined;
     selectedZip.value = '';
     selectedLabel.value = '';
+    selectedLocationId.value = '';
     status.textContent = '';
     const value = input.value.trim();
     if (composing || !/^(?:\d{3,5}|\d{5}-\d{4})$/.test(value)) return;
@@ -67,11 +70,12 @@ if (input && panel && status && selectedZip && selectedLabel) {
         const result = await response.json();
         if (version !== generation) return;
         if (!response.ok) {
-          status.textContent = result.error || 'Preview unavailable. You can still submit your search.';
+          status.textContent = result.error?.message || 'Preview unavailable. You can still submit your search.';
           return;
         }
         if (!Array.isArray(result.suggestions) || result.suggestions.some(item =>
           typeof item.zip !== 'string' || !/^\d{5}$/.test(item.zip) || !item.zip.startsWith(zip) ||
+          typeof item.location_id !== 'string' || !/^[1-9]\d*$/.test(item.location_id) ||
           typeof item.label !== 'string')) throw new Error('Invalid suggestions');
         suggestions = result.suggestions.slice(0, 5);
         if (!suggestions.length) {

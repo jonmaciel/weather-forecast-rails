@@ -9,18 +9,19 @@ module Weather
       @cache = cache
     end
 
-    def call(address:)
+    def call(address:, location_id: nil)
       unless address.is_a?(String) && address.strip.present? && address.length <= 300
         raise Error.new("invalid_address", "Enter a US address or ZIP code of up to 300 characters.", status: :unprocessable_content)
       end
       input = address.strip
       location = if input.match?(/\A\d{5}(?:-\d{4})?\z/)
-        @zip_lookup.lookup(input[0, 5])
+        @zip_lookup.lookup(input[0, 5], location_id: location_id)
       elsif input.match?(/\A[\d\s-]+\z/)
         raise Error.new("invalid_zip", "Enter a five-digit ZIP code, optionally followed by a four-digit extension (12345-6789).", status: :unprocessable_content)
       else
         @geocoder.lookup(input)
       end
+      # Resolve each input before reusing ZIP-level weather; location stays request-specific.
       cache_key = [ "forecast", "v2", "open-meteo", location.fetch(:country), location.fetch(:postal_code), "fahrenheit" ]
       from_cache = true
       forecast = @cache.fetch(cache_key, expires_in: CACHE_TTL) do

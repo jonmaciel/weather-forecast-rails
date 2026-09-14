@@ -304,8 +304,10 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     zip_request = stub_zip
     weather = stub_weather
     [ "Boston, Massachusetts 02108", "Boston (MA) — 02108" ].each do |label|
-      2.times do
-        post forecasts_path, params: { address: label, selected_zip: "02108", selected_label: label }
+      [ nil, "" ].each do |location_id|
+        post forecasts_path, params: {
+          address: label, selected_zip: "02108", selected_label: label, selected_location_id: location_id
+        }
         assert_response :success
         assert_select "#forecast-heading", text: "Boston, Massachusetts"
         assert_select "input#address[value=?]", label
@@ -318,14 +320,62 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_not_requested :get, /geocoding.geo.census.gov/
   end
 
+  test "selected locality persists on resubmission and shares weather without sharing location metadata" do
+    label = "Boston, Massachusetts 02108"
+    place = stub_zip_location
+    weather = stub_weather
+    2.times do |index|
+      post forecasts_path, params: {
+        address: label, selected_zip: "02108", selected_label: label, selected_location_id: "4930956"
+      }
+      assert_response :success
+      assert_select "#forecast-heading", text: "Boston, Massachusetts"
+      assert_select "input#address[value=?]", label
+      assert_select "input#selected_location_id[value='4930956']"
+      assert_select ".cache-badge", text: index.zero? ? "Just fetched" : "From cache"
+    end
+
+    another_place = zip_place.merge(id: 4930957, name: "Another locality", latitude: 42.361)
+    another_request = stub_zip_location(payload: another_place)
+    another_label = "Another locality, Massachusetts 02108"
+    post forecasts_path, params: {
+      address: another_label, selected_zip: "02108", selected_label: another_label, selected_location_id: "4930957"
+    }, as: :json
+    assert_response :success
+    assert_equal true, response.parsed_body.fetch("from_cache")
+    assert_equal "Another locality, Massachusetts", response.parsed_body.dig("location", "display_name")
+    assert_equal 42.361, response.parsed_body.dig("location", "latitude")
+    assert_requested place, times: 2
+    assert_requested another_request, times: 1
+    assert_requested weather, times: 1
+    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /geocoding.geo.census.gov/
+  end
+
+  test "invalid selected locality returns a structured error instead of choosing another location" do
+    label = "Boston, Massachusetts 02108"
+    request = stub_zip_location(payload: zip_place.merge(postcodes: [ "02109" ]))
+    post forecasts_path, params: {
+      address: label, selected_zip: "02108", selected_label: label, selected_location_id: "4930956"
+    }, as: :json
+    assert_error :unprocessable_content, "invalid_zip_selection"
+    assert response.parsed_body.dig("error", "message").present?
+    assert_requested request, times: 1
+    assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT
+    assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
+  end
+
   test "editing the address discards stale ZIP selection even if metadata is submitted" do
     address = "123 Main St, Boston, MA 02108"
     census = stub_census
     stub_weather
-    post forecasts_path, params: { address: address, selected_zip: "37303", selected_label: "Athens, Tennessee 37303" }
+    post forecasts_path, params: {
+      address: address, selected_zip: "37303", selected_label: "Athens, Tennessee 37303", selected_location_id: "4603284"
+    }
     assert_response :success
     assert_select "input#selected_zip[value]", count: 0
     assert_select "input#selected_label[value]", count: 0
+    assert_select "input#selected_location_id[value]", count: 0
     assert_requested census, times: 1
     assert_not_requested :get, /geocoding-api\.open-meteo\.com/
   end
@@ -424,7 +474,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     2.times do
       get zip_lookup_path, params: { zip: "02108" }, as: :json
       assert_response :success
-      assert_equal([ { "zip" => "02108", "label" => "Boston, Massachusetts" } ], response.parsed_body.fetch("suggestions"))
+      assert_equal([ { "zip" => "02108", "label" => "Boston, Massachusetts", "location_id" => "4930956" } ], response.parsed_body.fetch("suggestions"))
     end
     assert_requested lookup, times: 1
     assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
@@ -432,7 +482,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
 
   test "ZIP suggestion rejects incomplete input and handles missing ZIPs" do
     get zip_lookup_path, params: { zip: "02" }, as: :json
-    assert_response :unprocessable_content
+    assert_error :unprocessable_content, "invalid_zip_prefix"
     assert_not_requested :get, /open-meteo.com/
     stub_zip(payload: {})
     get zip_lookup_path, params: { zip: "02108" }, as: :json
@@ -457,16 +507,21 @@ class ForecastsTest < ActionDispatch::IntegrationTest
   test "ZIP suggestions handle malformed provider responses and timeouts" do
     stub_zip(payload: { results: [ { country_code: "US" } ] })
     get zip_lookup_path, params: { zip: "02108" }, as: :json
-    assert_response :bad_gateway
+    assert_error :bad_gateway, "invalid_provider_response"
     stub_request(:get, /geocoding-api.open-meteo.com/).to_timeout
     get zip_lookup_path, params: { zip: "02108" }, as: :json
-    assert_response :gateway_timeout
+    assert_error :gateway_timeout, "provider_timeout"
   end
 
   private
 
   def zip_place
-    { name: "Boston", admin1: "Massachusetts", country_code: "US", postcodes: [ "02108" ], latitude: 42.36, longitude: -71.06 }
+    { id: 4930956, name: "Boston", admin1: "Massachusetts", country_code: "US", postcodes: [ "02108" ], latitude: 42.36, longitude: -71.06 }
+  end
+
+  def stub_zip_location(payload: zip_place)
+    stub_request(:get, Weather::ZipCodeClient::LOCATION_ENDPOINT).with(query: { id: payload.fetch(:id).to_s })
+      .to_return(body: payload.to_json)
   end
 
   def stub_zip(payload: { results: [ zip_place ] })

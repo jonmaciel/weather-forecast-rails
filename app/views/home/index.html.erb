@@ -14,6 +14,7 @@
       <%= form_with url: forecasts_path, method: :post, local: true, class: "search-form" do |form| %>
         <%= form.hidden_field :selected_zip, value: @selected_zip %>
         <%= form.hidden_field :selected_label, value: @selected_label %>
+        <%= form.hidden_field :selected_location_id, value: @selected_location_id %>
         <%= form.label :address, "Address or ZIP code" %>
         <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a full street address. ZIP suggestions start at 3 digits.</p>
         <div class="address-control">

@@ -110,10 +110,12 @@ request retrieves fresh weather. Errors are never cached or replaced by expired
 weather. The key includes a schema version, provider, country, ZIP and unit.
 
 Each request resolves the input through Census (street address) or Open-Meteo
-geocoding (ZIP). Inputs sharing a ZIP
-reuse weather but retain their own matched address and coordinates in the result.
-The ZIP is normalized to five digits, including leading zeros. This deliberately
-approximates weather for the whole ZIP using the first successful lookup.
+geocoding (ZIP or selected locality) before reading the weather cache. This keeps
+the matched location specific to the request and revalidates selections, but a
+geocoder failure can still prevent a response when weather is cached. Inputs
+sharing a ZIP reuse weather from the first successful lookup in that window,
+even when their resolved coordinates differ. This is a deliberate approximation
+for the ZIP area. ZIPs are normalized to five digits, preserving leading zeros.
 
 The in-memory cache is per process, may evict entries under memory pressure, and
 is lost on restart. Run repeated requests against the same server to see cache
@@ -142,9 +144,10 @@ zeros are significant; send ZIPs as strings, not JSON numbers. ZIP+4 is normaliz
 to five digits. Invalid numeric formats are rejected without a provider request.
 
 ZIP lookup uses Open-Meteo geocoding and requires an exact match in the returned
-US location's postal-code list. Unknown ZIPs and ambiguous results ask the user
-to correct the ZIP or supply a full address. This provider returns locality
-coordinates, not a precise ZIP centroid; forecasts are approximate for the area.
+US location's postal-code list. Unknown ZIPs ask the user to correct the ZIP or
+supply a full address. If a ZIP matches several localities, select a suggestion
+or enter a full address; the application never chooses one arbitrarily. This
+provider returns locality coordinates, not a precise ZIP centroid; forecasts are approximate for the area.
 Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
 30-minute weather cache. Location attribution includes GeoNames.
 
@@ -157,12 +160,14 @@ Selecting an option fills the input with a readable locality, such as
 `Athens, Tennessee 37303`, and closes the list without submitting the weather form.
 There is no separate selection card or Change action: edit the input directly.
 
-The form submits `selected_zip` separately from the visible label, with
-`selected_label` recording its unchanged value. The controller uses the selected
-ZIP only while the label matches that snapshot and the ZIP has a valid format.
-Editing clears both fields; the server also ignores stale/malformed selection
-metadata. The service resolves the ZIP with the provider and never parses the
-display label. ZIP+4 is retained in the input and normalized for weather lookup.
+The form submits `selected_zip` and `selected_location_id` separately from the
+visible label, with `selected_label` recording its unchanged value. Editing clears
+all three fields. The controller forwards a selection only while its label matches
+that snapshot. The ZIP client resolves the provider's location ID and verifies
+that it belongs to the submitted ZIP in the US; browser labels and coordinates
+are never authoritative. An unknown or mismatched selection returns a recoverable
+validation error. The forecast service never parses the display label. ZIP+4 is
+retained in the input and normalized for weather lookup.
 
 Plain ZIPs, full street addresses and resubmitting a selection rendered by the
 server work without JavaScript. Copying just the city/state label into a new
@@ -176,9 +181,14 @@ Escape dismisses the list. The search button (or Enter after selection) submits 
 forecast request. Editing discards the current selection. Stale requests are
 cancelled and ignored, and composition input is respected.
 
-`GET /zip-lookup?zip=021` accepts three to five digits and returns up to five ZIPs
-from Open-Meteo. Results, including empty lists, are cached by prefix for one hour;
-suggestions never fetch weather. Failures leave manual search usable. Provider
+`GET /zip-lookup?zip=021` accepts three to five digits and returns a suggestions
+array, for example:
+`{ "suggestions": [{ "zip": "02108", "label": "Boston, Massachusetts", "location_id": "4930956" }] }`.
+ZIPs and provider IDs are strings; IDs are positive integers up to `2147483647`,
+matching the provider's signed 32-bit range. Results, including empty lists, are
+cached by prefix for one hour; suggestions never fetch weather. Errors use the same
+`{ "error": { "code": "...", "message": "..." } }` envelope as forecasts;
+`invalid_zip_prefix` returns 422. Failures leave manual search usable. Provider
 coverage is not an exhaustive USPS directory or street-address autocomplete.
 
 The interaction draws on the editable selection in

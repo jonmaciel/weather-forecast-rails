@@ -4,10 +4,10 @@ class ForecastSearchTest < ApplicationSystemTestCase
   setup do
     @previous_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
-    stub_zip("373", "Athens", "Tennessee", %w[37303 37304])
-    stub_zip("37304", "Athens", "Tennessee", %w[37304])
-    stub_zip("021", "Boston", "Massachusetts", %w[02108])
-    stub_zip("02108", "Boston", "Massachusetts", %w[02108])
+    stub_zip("373", "Athens", "Tennessee", %w[37303 37304], id: 4611932)
+    stub_zip("37304", "Athens", "Tennessee", %w[37303 37304], id: 4611932)
+    stub_zip("021", "Boston", "Massachusetts", %w[02108], id: 4930956)
+    stub_zip("02108", "Boston", "Massachusetts", %w[02108], id: 4930956)
     stub_weather
     visit root_path
   end
@@ -21,6 +21,7 @@ class ForecastSearchTest < ApplicationSystemTestCase
     assert_selector "[role=option]", count: 2
     address.send_keys(:arrow_down, :arrow_down, :enter)
     assert_field "address", with: "Athens, Tennessee 37304"
+    assert_selector "#selected_location_id[value='4611932']", visible: :all
     assert_no_selector "[role=listbox]"
     assert_current_path root_path
     click_on "Check the weather"
@@ -28,8 +29,35 @@ class ForecastSearchTest < ApplicationSystemTestCase
     assert_selector ".daily-forecast", text: "80°F"
     assert_selector ".daily-forecast", text: "55°F"
     assert_field "address", with: "Athens, Tennessee 37304"
+    assert_selector "#selected_location_id[value='4611932']", visible: :all
     click_on "Check the weather"
     assert_selector ".cache-badge", text: "From cache"
+    assert_requested :get, /api.open-meteo.com\/v1\/forecast/, times: 1
+    assert_not_requested :get, /geocoding.geo.census.gov/
+  end
+
+  test "selecting different locations for one ZIP preserves the place and shares weather cache" do
+    places = [
+      { id: 5110302, name: "Brooklyn", admin1: "New York", country_code: "US", postcodes: %w[11201], latitude: 40.65, longitude: -73.95 },
+      { id: 7162414, name: "Brooklyn Bridge Park", admin1: "New York", country_code: "US", postcodes: %w[11201], latitude: 40.7, longitude: -73.99 }
+    ]
+    stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: hash_including(name: "11201")).to_return(body: { results: places }.to_json)
+    places.each do |place|
+      stub_request(:get, Weather::ZipCodeClient::LOCATION_ENDPOINT).with(query: hash_including(id: place.fetch(:id).to_s)).to_return(body: place.to_json)
+    end
+
+    places.each_with_index do |place, index|
+      fill_in "Address or ZIP code", with: "11201"
+      assert_selector "[role=option]", count: 2
+      find("[role=option]", text: "#{place.fetch(:name)}, New York").click
+      assert_selector "#selected_location_id[value='#{place.fetch(:id)}']", visible: :all
+      click_on "Check the weather"
+      assert_selector "#forecast-heading", text: "#{place.fetch(:name)}, New York"
+      assert_selector "#selected_location_id[value='#{place.fetch(:id)}']", visible: :all
+      assert_selector ".cache-badge", text: index.zero? ? "Just fetched" : "From cache"
+      assert_requested :get, Weather::ZipCodeClient::LOCATION_ENDPOINT, query: hash_including(id: place.fetch(:id).to_s), times: 1
+    end
+
     assert_requested :get, /api.open-meteo.com\/v1\/forecast/, times: 1
     assert_not_requested :get, /geocoding.geo.census.gov/
   end
@@ -66,10 +94,12 @@ class ForecastSearchTest < ApplicationSystemTestCase
     find("[role=option]", text: "Boston").click
     assert_field "address", with: "Boston, Massachusetts 02108-1234"
     assert_selector "#selected_zip[value='02108-1234']", visible: :all
+    assert_selector "#selected_location_id[value='4930956']", visible: :all
     fill_in "Address or ZIP code", with: "373"
     find("[role=option]", text: "37304").click
     assert_field "address", with: "Athens, Tennessee 37304"
     assert_selector "#selected_zip[value='37304']", visible: :all
+    assert_selector "#selected_location_id[value='4611932']", visible: :all
   end
 
   test "editing a selection submits the street address instead of the old ZIP" do
@@ -80,9 +110,11 @@ class ForecastSearchTest < ApplicationSystemTestCase
       result: { addressMatches: [ { matchedAddress: street, addressComponents: { state: "MA", zip: "02108" }, coordinates: { x: -71.06, y: 42.36 } } ] }
     }.to_json)
     fill_in "Address or ZIP code", with: street
+    assert_selector "#selected_location_id[value='']", visible: :all
     click_on "Check the weather"
     assert_selector "#forecast-heading", text: street
     assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT, query: hash_including(name: "37304")
+    assert_not_requested :get, Weather::ZipCodeClient::LOCATION_ENDPOINT, query: hash_including(id: "4611932")
   end
 
   test "preview failure leaves plain ZIP submission usable" do
@@ -111,10 +143,12 @@ class ForecastSearchTest < ApplicationSystemTestCase
     find("#address")
   end
 
-  def stub_zip(prefix, city, state, postcodes)
+  def stub_zip(prefix, city, state, postcodes, id:)
+    place = { id: id, name: city, admin1: state, country_code: "US", postcodes: postcodes, latitude: 42.36, longitude: -71.06 }
     stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: hash_including(name: prefix)).to_return(body: {
-      results: [ { name: city, admin1: state, country_code: "US", postcodes: postcodes, latitude: 42.36, longitude: -71.06 } ]
+      results: [ place ]
     }.to_json)
+    stub_request(:get, Weather::ZipCodeClient::LOCATION_ENDPOINT).with(query: hash_including(id: id.to_s)).to_return(body: place.to_json)
   end
 
   def stub_weather

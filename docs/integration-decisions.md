@@ -32,10 +32,14 @@ Source: [Census API documentation](https://geocoding.geo.census.gov/geocoder/Geo
 
 Use `https://geocoding-api.open-meteo.com/v1/search` with the normalized ZIP,
 `countryCode=US`, `count=100`, `language=en` and `format=json`. Require the exact
-ZIP in the result's `postcodes` and country US. Reject no matches and multiple
-matches instead of choosing an arbitrary location. Coordinates represent the
-associated locality, not the precise ZIP centroid. Coverage is provider-dependent;
-users can try a full address if ZIP lookup fails. GeoNames attribution is shown.
+ZIP in the result's `postcodes` and country US. With no selection, reject no matches
+and multiple matches instead of choosing an arbitrary location. For a selected
+locality, resolve its provider ID through `/v1/get?id=...`, then verify the exact
+ID, country and ZIP membership. This avoids depending on the search result limit
+when resolving a previously selected locality. Validate label and coordinates in
+both paths. Coordinates represent the associated locality, not the precise ZIP
+centroid. Coverage is provider-dependent; users can select a suggestion or try a
+full address if a plain ZIP is ambiguous. GeoNames attribution is shown.
 
 Source: [Geocoding API](https://open-meteo.com/en/docs/geocoding-api).
 
@@ -72,27 +76,64 @@ Sources: [Weather API](https://open-meteo.com/en/docs),
 
 ## Application contract
 
-Keep small provider clients separate from a forecast service and controller.
-Use Ruby's Net::HTTP with fixed HTTPS endpoints, encoded query parameters,
-verified TLS, a 3-second connection timeout and a 10-second read timeout.
-Do not retry during the initial synchronous request. Translate timeouts, rate
-limits, non-success responses and malformed payloads into controlled errors.
-Tests stub HTTP calls and do not need internet access.
+Provider clients normalize external payloads into symbol-keyed hashes. The
+forecast service coordinates them; controllers handle form metadata and HTTP
+responses.
+
+| Method | Successful result |
+| --- | --- |
+| `CensusClient#lookup(address)` | A location with `address`, `country`, `postal_code`, `latitude`, `longitude` |
+| `ZipCodeClient#lookup(zip, location_id: nil)` | The same location fields, plus `display_name` |
+| `ZipCodeClient#suggestions(prefix)` | Up to five hashes with string `zip`, `label`, `location_id`; IDs are positive decimal strings up to `2147483647` |
+| `OpenMeteoClient#forecast(latitude:, longitude:)` | `current` and `daily` hashes |
+| `Forecast#call(address:, location_id: nil)` | `location`, `current`, `daily`, and boolean `from_cache` |
+
+Locations have a five-digit string ZIP, country `US`, nonempty labels and finite
+coordinates within latitude/longitude bounds. `current` contains a finite
+`temperature`, `unit` (`°F`), ISO local `time`, `timezone`, `source` and `source_url`.
+`daily` contains the matching local `date`, finite `high` and `low` (`high >= low`),
+and `unit`. The service accepts a ZIP or street address, never a presentation label.
+
+The form carries `selected_zip`, `selected_location_id` and a `selected_label`
+snapshot. Editing clears all three. The controller forwards selection metadata
+only for an unchanged label; the ZIP client independently revalidates the ID and
+ZIP with the provider. It rejects malformed IDs before making a network request.
+The ID range follows the provider's signed 32-bit parameter.
+
+Expected failures raise `Weather::Error` with `code`, message and HTTP `status`.
+Both JSON endpoints expose `{ "error": { "code": "...", "message": "..." } }`.
+Invalid input, unresolved/ambiguous locations and `invalid_zip_selection` return
+422; the last covers malformed/unknown IDs or a selected locality outside the
+submitted ZIP/country. Invalid suggestion prefixes use `invalid_zip_prefix`.
+Malformed provider payloads use `invalid_provider_response` (502), other provider
+failures return 502, rate limits 503, and timeouts 504. The HTTP adapter retains
+the upstream status internally as `provider_status`: the ZIP client translates
+`/get` HTTP 400 for an unknown ID into `invalid_zip_selection`, while outages and
+rate limits keep their original provider errors. This internal status is not
+included in the public JSON envelope.
+
+HTTP requests use fixed HTTPS endpoints, encoded query parameters, verified TLS,
+a 3-second connection timeout and 10-second read/write timeouts, without retries.
+Tests stub HTTP calls and do not need external API access.
 
 Normalize ZIPs as five-character strings, preserving leading zeros and reducing
 ZIP+4 to its first five digits. Cache successful weather payloads for 30 minutes
 under a versioned key containing provider, country, ZIP and unit. Different
 addresses in the same ZIP reuse the first successful forecast in that window;
-this is a deliberate area-level approximation. Keep the current matched address
-outside that shared payload. The appropriate geocoder still runs before the weather-cache lookup.
-The UI sends a selected ZIP separately from its label; editing clears the
-selection. The forecast service accepts only ZIPs or street addresses and has no
-knowledge of label formatting.
+this is a deliberate area-level approximation even when locations within that
+ZIP have different coordinates. Keep the current matched location outside that
+shared payload. The appropriate geocoder runs before the weather-cache lookup
+to resolve each input and revalidate selected IDs. Consequently, a geocoder
+failure still prevents a response even if that ZIP's weather is cached.
 Do not cache errors; derive the cache indicator separately for each request.
+The weather cache remains schema `v2`; suggestion entries use `v2` to include IDs.
+Suggestion lists, including empty results, are cached by prefix for one hour.
 
-Rails.cache uses process-local memory for local development. Restarting loses
-entries; multiple processes do not share them. No database is needed. A shared
-cache can replace this store if the deployment requirements change.
+Rails.cache uses process-local memory. Restarting loses entries and multiple
+processes do not share them. Concurrent misses may each request fresh weather;
+there is no lock or request coalescing, and each reports `from_cache: false`.
+Reads do not renew the 30-minute TTL. No database is needed. Shared caching and
+request coalescing are deferred until deployment or traffic requires them.
 
 Filter the address parameter from Rails logs. Send the full address only
 to the geocoder, and only coordinates to the weather API. Do not persist searches.

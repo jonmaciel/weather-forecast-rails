@@ -18,10 +18,10 @@ module Weather
       response = http.request(request)
 
       if response.code == "429"
-        raise Error.new("provider_rate_limited", "The weather services are busy. Please try again later.", status: :service_unavailable)
+        raise Error.new("provider_rate_limited", "The weather services are busy. Please try again later.", status: :service_unavailable, provider_status: 429)
       end
       unless response.is_a?(Net::HTTPSuccess)
-        raise Error.new("provider_unavailable", "A weather service is unavailable. Please try again later.")
+        raise Error.new("provider_unavailable", "A weather service is unavailable. Please try again later.", provider_status: response.code.to_i)
       end
 
       data = JSON.parse(response.body)
