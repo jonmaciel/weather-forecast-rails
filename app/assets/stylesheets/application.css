@@ -37,6 +37,10 @@ h1 { font-size: clamp(40px, 4.8vw, 60px); font-weight: 600; line-height: 1.07; l
 .temperature { font-size: clamp(64px, 7vw, 88px); letter-spacing: -5px; line-height: 1.1; margin: 26px 0 0; font-weight: 500; }
 .temperature span { font-size: 34px; vertical-align: top; display: inline-block; margin: 12px 0 0 6px; letter-spacing: -1px; }
 .temperature-label { margin: 4px 0 26px; color: #526864; font-size: 13px; }
+.daily-date { margin: 0 0 10px; font-size: 12px; color: #526864; }
+.daily-forecast { display: flex; gap: 40px; margin: 0 0 24px; }
+.daily-forecast dt { color: #526864; font-size: 12px; }
+.daily-forecast dd { margin: 4px 0 0; font-size: 22px; font-weight: 600; }
 .forecast-details { border-top: 1px solid #c7d7cc; padding-top: 18px; font-size: 12px; }
 .forecast-details div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-bottom: 10px; }
 .forecast-details dt { color: #526864; }

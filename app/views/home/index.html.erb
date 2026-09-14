@@ -51,6 +51,12 @@
         <p class="location-detail">ZIP <%= location.fetch(:postal_code) %> · United States</p>
         <p class="temperature"><%= number_with_precision(current.fetch(:temperature), precision: 1, strip_insignificant_zeros: true) %><span>°F</span></p>
         <p class="temperature-label">Air temperature</p>
+        <% daily = @forecast.fetch(:daily) %>
+        <p class="daily-date">Daily forecast · <time datetime="<%= daily.fetch(:date) %>"><%= Date.iso8601(daily.fetch(:date)).strftime("%b %-d") %></time></p>
+        <dl class="daily-forecast">
+          <div><dt>High</dt><dd><%= number_with_precision(daily.fetch(:high), precision: 1, strip_insignificant_zeros: true) %>°F</dd></div>
+          <div><dt>Low</dt><dd><%= number_with_precision(daily.fetch(:low), precision: 1, strip_insignificant_zeros: true) %>°F</dd></div>
+        </dl>
         <dl class="forecast-details">
           <div>
             <dt>Conditions at</dt>

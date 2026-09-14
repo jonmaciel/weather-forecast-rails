@@ -21,13 +21,13 @@ module Weather
       else
         @geocoder.lookup(input)
       end
-      cache_key = [ "forecast", "v1", "open-meteo", location.fetch(:country), location.fetch(:postal_code), "fahrenheit" ]
+      cache_key = [ "forecast", "v2", "open-meteo", location.fetch(:country), location.fetch(:postal_code), "fahrenheit" ]
       from_cache = true
-      current = @cache.fetch(cache_key, expires_in: CACHE_TTL) do
+      forecast = @cache.fetch(cache_key, expires_in: CACHE_TTL) do
         from_cache = false
-        @weather.current(latitude: location.fetch(:latitude), longitude: location.fetch(:longitude))
+        @weather.forecast(latitude: location.fetch(:latitude), longitude: location.fetch(:longitude))
       end
-      { location: location, current: current, from_cache: from_cache }
+      { location: location, **forecast, from_cache: from_cache }
     end
   end
 end

@@ -11,7 +11,9 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     }
     @weather = {
       "current" => { "temperature_2m" => 0, "time" => "2026-09-12T10:15" },
-      "current_units" => { "temperature_2m" => "°F" }, "timezone" => "America/New_York"
+      "current_units" => { "temperature_2m" => "°F" }, "timezone" => "America/New_York",
+      "daily" => { "time" => [ "2026-09-12" ], "temperature_2m_max" => [ 15.5 ], "temperature_2m_min" => [ -5 ] },
+      "daily_units" => { "temperature_2m_max" => "°F", "temperature_2m_min" => "°F" }
     }
   end
 
@@ -32,6 +34,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_equal "America/New_York", data.dig("current", "timezone")
     assert_equal "no-store", response.headers["Cache-Control"]
     assert_equal false, data.fetch("from_cache")
+    assert_equal({ "date" => "2026-09-12", "high" => 15.5, "low" => -5, "unit" => "°F" }, data.fetch("daily"))
     assert_requested census, times: 1
     assert_requested weather, times: 1
   end
@@ -136,6 +139,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal true, response.parsed_body.fetch("from_cache")
     assert_equal original.fetch("current"), response.parsed_body.fetch("current")
+    assert_equal original.fetch("daily"), response.parsed_body.fetch("daily")
     assert_equal @match["matchedAddress"], response.parsed_body.dig("location", "address")
     assert_equal 42.361, response.parsed_body.dig("location", "latitude")
     assert_requested weather, times: 1
@@ -232,6 +236,8 @@ class ForecastsTest < ActionDispatch::IntegrationTest
       assert_select "input#address[value=?]", "123 Main St, Boston, MA 02108"
       assert_select "#forecast-heading", text: @match["matchedAddress"]
       assert_select ".temperature", text: "0°F"
+      assert_select ".daily-forecast dd", text: "15.5°F"
+      assert_select ".daily-forecast dd", text: "-5°F"
       assert_select "time[datetime='2026-09-12T10:15']", text: /Sep 12, 2026/
       assert_select ".cache-badge", text: index.zero? ? "Just fetched" : "From cache"
       assert_select "#search-error", count: 0
@@ -353,6 +359,34 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_not_requested :get, /census.gov|open-meteo.com/
   end
 
+  test "invalid daily forecasts are not cached and return a controlled error" do
+    stub_census
+    invalid = [ nil, {}, @weather["daily"].merge("temperature_2m_max" => []),
+      @weather["daily"].merge("temperature_2m_min" => [ nil ]),
+      @weather["daily"].merge("temperature_2m_max" => [ "15" ]),
+      @weather["daily"].merge("temperature_2m_min" => [ 99 ]),
+      @weather["daily"].merge("time" => [ "2026-09-13" ]) ]
+    invalid.each do |daily|
+      stub_request(:get, Weather::OpenMeteoClient::ENDPOINT).with(query: hash_including(current: "temperature_2m"))
+        .to_return(body: @weather.merge("daily" => daily).to_json)
+      query
+      assert_error :bad_gateway, "invalid_provider_response"
+    end
+    stub_weather
+    query
+    assert_response :success
+    assert_equal false, response.parsed_body.fetch("from_cache")
+  end
+
+  test "daily temperature units must match Fahrenheit" do
+    stub_census
+    payload = @weather.deep_dup
+    payload["daily_units"]["temperature_2m_min"] = "°C"
+    stub_request(:get, /api.open-meteo.com/).to_return(body: payload.to_json)
+    query
+    assert_error :bad_gateway, "invalid_provider_response"
+  end
+
   test "rejects malformed ZIPs without calling a provider" do
     [ "1234", "123456", "021081234", "02108-123", "02108-12345" ].each do |zip|
       post forecasts_path, params: { address: zip }, as: :json
@@ -459,7 +493,8 @@ class ForecastsTest < ActionDispatch::IntegrationTest
   def stub_weather
     stub_request(:get, Weather::OpenMeteoClient::ENDPOINT).with(query: {
       latitude: "42.36", longitude: "-71.06", current: "temperature_2m",
-      temperature_unit: "fahrenheit", timezone: "auto"
+      temperature_unit: "fahrenheit", timezone: "auto",
+      daily: "temperature_2m_max,temperature_2m_min", forecast_days: "1"
     }).to_return(body: @weather.to_json)
   end
 end
