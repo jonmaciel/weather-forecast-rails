@@ -74,3 +74,17 @@ jobs:
           # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           # REDIS_URL: redis://localhost:6379/0
         run: bin/rails test
+
+      - name: Run browser tests
+        env:
+          RAILS_ENV: test
+          CI: true
+        run: bin/rails test:system
+
+      - name: Upload browser failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures
+          path: tmp/screenshots
+          if-no-files-found: ignore

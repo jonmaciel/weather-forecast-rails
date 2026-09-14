@@ -18,6 +18,9 @@ docker run --rm --network none -e CI=true "$image:test" bin/rails test
 docker run --rm --network none "$image:test" bin/rubocop
 docker run --rm --network none "$image:test" bundle exec brakeman --no-pager
 
+docker build --target system-test -t "$image:system-test" .
+docker run --rm --network none --shm-size=256m "$image:system-test"
+
 docker build --target production -t "$image:ci" .
 # This ephemeral key exists only for the isolated HTTP smoke test.
 SECRET_KEY_BASE="$(docker run --rm --network none --entrypoint ruby "$image:ci" -rsecurerandom -e 'print SecureRandom.hex(64)')"
@@ -42,6 +45,11 @@ docker exec "$container_id" ruby -rnet/http -e '
   stylesheet = response.body[/href="([^"]+\.css)"/, 1]
   abort "Stylesheet missing" unless stylesheet
   abort "Compiled assets failed" unless Net::HTTP.get_response(URI.join("http://127.0.0.1:3000", stylesheet)).code == "200"
+  javascript = response.body[/src="([^"]*zip_lookup[^\"]*\.js)"/, 1]
+  abort "Autocomplete JavaScript missing" unless javascript
+  abort "Compiled JavaScript failed" unless Net::HTTP.get_response(URI.join("http://127.0.0.1:3000", javascript)).code == "200"
+  navigation = Net::HTTP.get_response(URI("http://127.0.0.1:3000/forecasts"))
+  abort "Forecast navigation failed" unless navigation.code == "303"
   abort "Container runs as root" if Process.uid.zero?
   abort "Local master key was included" if File.exist?("config/master.key")
   puts "Production smoke test passed: health, HTML, assets, non-root user, no master key."

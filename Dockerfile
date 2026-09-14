@@ -26,6 +26,16 @@ USER rails
 ENV RAILS_ENV=test RUBOCOP_CACHE_ROOT=/rails/tmp/rubocop
 CMD ["bin/rails", "test"]
 
+# Browser tooling is limited to this target; it is not shipped in production.
+FROM test AS system-test
+USER root
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y chromium chromium-driver && \
+    rm -rf /var/lib/apt/lists/*
+USER rails
+ENV CHROME_BIN=/usr/bin/chromium SE_CHROMEDRIVER=/usr/bin/chromedriver CI=true
+CMD ["bin/rails", "test:system"]
+
 FROM dependencies AS build
 ENV BUNDLE_WITHOUT=development:test RAILS_ENV=production
 RUN bundle install && bundle exec bootsnap precompile --gemfile
