@@ -15,18 +15,25 @@
         <%= form.hidden_field :selected_zip, value: @selected_zip %>
         <%= form.hidden_field :selected_label, value: @selected_label %>
         <%= form.hidden_field :selected_location_id, value: @selected_location_id %>
+        <%= form.hidden_field :selected_address_token, value: @selected_address_token %>
         <%= form.label :address, "Address or ZIP code" %>
-        <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a full street address. ZIP suggestions start at 3 digits.</p>
+        <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Start typing a street address or ZIP (e.g. 20233), then choose a suggestion or enter a full address.</p>
         <div class="address-control">
           <%= form.text_field :address, value: @address, required: true, maxlength: 300,
             placeholder: "20233 or 4600 Silver Hill Rd, Washington, DC",
-            data: { zip_lookup_url: zip_lookup_path },
+            data: { zip_lookup_url: zip_lookup_path, address_lookup_url: address_lookup_path },
             autocomplete: "off", autofocus: @error.present?,
             aria: { describedby: @error ? "address-help search-error" : "address-help",
                     invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
-          <div id="zip-suggestion" class="zip-suggestion" hidden></div>
+          <div id="zip-suggestion" class="zip-suggestion" hidden>
+            <div id="zip-options"></div>
+            <div id="zip-feedback" class="zip-feedback" hidden>
+              <span class="zip-spinner" aria-hidden="true" hidden></span>
+              <span id="zip-feedback-message"></span>
+            </div>
+          </div>
         </div>
-        <p id="zip-status" class="field-help" role="status" aria-live="polite"></p>
+        <p id="zip-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
         <% if @error %>
           <div class="error-message" id="search-error" role="alert">
             <strong>We couldn't get that forecast.</strong>
@@ -82,5 +89,6 @@
   <footer class="page-footer">
     <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
     <p>Address lookup by <a href="https://geocoding.geo.census.gov/">US Census Bureau</a>; ZIP lookup by Open-Meteo / <a href="https://www.geonames.org/">GeoNames</a>. Model-derived weather, shared by ZIP.</p>
+    <p>Address suggestions by <a href="https://photon.komoot.io/">Photon</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></p>
   </footer>
 </main>

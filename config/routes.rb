@@ -14,4 +14,5 @@ Rails.application.routes.draw do
   get "forecasts", to: redirect("/", status: 303)
   resources :forecasts, only: :create
   get "zip-lookup", to: "zip_lookups#show", as: :zip_lookup
+  post "address-lookup", to: "address_lookups#create", as: :address_lookup
 end

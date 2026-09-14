@@ -1,85 +1,141 @@
 const input = document.querySelector('[data-zip-lookup-url]');
 const panel = document.querySelector('#zip-suggestion');
+const list = document.querySelector('#zip-options');
+const feedback = document.querySelector('#zip-feedback');
+const feedbackMessage = document.querySelector('#zip-feedback-message');
+const spinner = document.querySelector('.zip-spinner');
 const status = document.querySelector('#zip-status');
 const selectedZip = document.querySelector('#selected_zip');
 const selectedLabel = document.querySelector('#selected_label');
 const selectedLocationId = document.querySelector('#selected_location_id');
+const selectedAddressToken = document.querySelector('#selected_address_token');
 
-if (input && panel && status && selectedZip && selectedLabel && selectedLocationId) {
+if (input && panel && list && feedback && feedbackMessage && spinner && status && selectedZip && selectedLabel && selectedLocationId && selectedAddressToken) {
   let timer;
   let request;
   let generation = 0;
   let suggestions = [];
   let activeIndex = -1;
-  let selected = selectedZip.value && selectedLabel.value === input.value;
+  let selected = (selectedZip.value || selectedAddressToken.value) && selectedLabel.value === input.value;
   let composing = false;
 
   input.setAttribute('role', 'combobox');
   input.setAttribute('aria-autocomplete', 'list');
-  input.setAttribute('aria-controls', panel.id);
+  input.setAttribute('aria-controls', list.id);
   input.setAttribute('aria-expanded', 'false');
-  panel.setAttribute('role', 'listbox');
-  panel.setAttribute('aria-label', 'ZIP locations');
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Address and ZIP suggestions');
 
-  const close = () => {
+  const cancelLookup = () => {
     clearTimeout(timer);
     request?.abort();
+    request = undefined;
     generation += 1;
     suggestions = [];
     activeIndex = -1;
-    panel.replaceChildren();
-    panel.hidden = true;
-    input.setAttribute('aria-expanded', 'false');
     input.removeAttribute('aria-activedescendant');
     input.removeAttribute('aria-busy');
+    list.removeAttribute('aria-busy');
+  };
+
+  const close = () => {
+    cancelLookup();
+    list.replaceChildren();
+    panel.hidden = true;
+    panel.style.minHeight = '';
+    input.setAttribute('aria-expanded', 'false');
+    status.textContent = '';
+  };
+
+  const announce = (message) => {
+    if (status.textContent !== message) status.textContent = message;
+  };
+
+  const showFeedback = (message, loading = false) => {
+    // Keep the previous list height while its replacement is loading.
+    panel.style.minHeight = loading && !panel.hidden ? `${panel.getBoundingClientRect().height}px` : '';
+    list.replaceChildren();
+    feedback.hidden = false;
+    feedback.classList.remove('is-hint');
+    spinner.hidden = !loading;
+    feedbackMessage.textContent = message;
+    panel.scrollTop = 0;
+    panel.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    if (loading) {
+      input.setAttribute('aria-busy', 'true');
+      list.setAttribute('aria-busy', 'true');
+    } else {
+      announce(message);
+    }
   };
 
   const accept = () => {
     if (!suggestions.length) return;
     selected = suggestions[Math.max(activeIndex, 0)];
-    const zip = /^\d{5}-\d{4}$/.test(input.value.trim()) ? input.value.trim() : selected.zip;
-    input.value = `${selected.label} ${zip}`;
-    selectedZip.value = zip;
+    if (selected.token) {
+      input.value = selected.label;
+      selectedAddressToken.value = selected.token;
+    } else {
+      const zip = /^\d{5}-\d{4}$/.test(input.value.trim()) ? input.value.trim() : selected.zip;
+      input.value = `${selected.label} ${zip}`;
+      selectedZip.value = zip;
+      selectedLocationId.value = selected.location_id;
+    }
     selectedLabel.value = input.value;
-    selectedLocationId.value = selected.location_id;
     close();
-    status.textContent = 'City and ZIP selected. You can edit this field or check the weather.';
+    announce('Location selected. You can edit this field or check the weather.');
   };
 
   const lookup = () => {
-    close();
+    cancelLookup();
     selected = undefined;
     selectedZip.value = '';
     selectedLabel.value = '';
     selectedLocationId.value = '';
-    status.textContent = '';
+    selectedAddressToken.value = '';
     const value = input.value.trim();
-    if (composing || !/^(?:\d{3,5}|\d{5}-\d{4})$/.test(value)) return;
+    const isZip = /^(?:\d{3,5}|\d{5}-\d{4})$/.test(value);
+    if (composing || (!isZip && (value.length < 6 || value.length > 300 || !/[a-z]/i.test(value)))) {
+      close();
+      announce('');
+      return;
+    }
+    showFeedback('Searching for locations…', true);
     const version = generation;
     const zip = value.slice(0, 5);
     timer = setTimeout(async () => {
       const controller = new AbortController();
       request = controller;
       const timeout = setTimeout(() => controller.abort(), 12000);
-      input.setAttribute('aria-busy', 'true');
-      status.textContent = 'Looking up this ZIP…';
+      announce('Searching for locations…');
       try {
-        const url = new URL(input.dataset.zipLookupUrl, window.location.origin);
-        url.searchParams.set('zip', zip);
-        const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+        const url = new URL(isZip ? input.dataset.zipLookupUrl : input.dataset.addressLookupUrl, window.location.origin);
+        const options = { signal: controller.signal, headers: { Accept: 'application/json' } };
+        if (isZip) {
+          url.searchParams.set('zip', zip);
+        } else {
+          options.method = 'POST';
+          options.headers['Content-Type'] = 'application/json';
+          options.headers['X-CSRF-Token'] = document.querySelector('meta[name="csrf-token"]')?.content || '';
+          options.body = JSON.stringify({ address: value });
+        }
+        const response = await fetch(url, options);
         const result = await response.json();
         if (version !== generation) return;
         if (!response.ok) {
-          status.textContent = result.error?.message || 'Preview unavailable. You can still submit your search.';
+          showFeedback('Suggestions unavailable. Press Enter to search without a suggestion.');
           return;
         }
         if (!Array.isArray(result.suggestions) || result.suggestions.some(item =>
-          typeof item.zip !== 'string' || !/^\d{5}$/.test(item.zip) || !item.zip.startsWith(zip) ||
-          typeof item.location_id !== 'string' || !/^[1-9]\d*$/.test(item.location_id) ||
-          typeof item.label !== 'string')) throw new Error('Invalid suggestions');
+          !item || typeof item.zip !== 'string' || !/^\d{5}$/.test(item.zip) ||
+          typeof item.label !== 'string' || !item.label.trim() ||
+          (isZip ? (!item.zip.startsWith(zip) || typeof item.location_id !== 'string' || !/^[1-9]\d*$/.test(item.location_id))
+            : (typeof item.token !== 'string' || !item.token)))) throw new Error('Invalid suggestions');
         suggestions = result.suggestions.slice(0, 5);
         if (!suggestions.length) {
-          status.textContent = 'No matching ZIPs found. Keep typing or enter a full address.';
+          showFeedback(isZip ? 'No matching ZIPs found. Keep typing or enter a full address.'
+            : 'No matching addresses found. Add a city and state, or try a ZIP code.');
           return;
         }
         suggestions.forEach((item, index) => {
@@ -97,16 +153,21 @@ if (input && panel && status && selectedZip && selectedLabel && selectedLocation
           option.append(label, code);
           option.addEventListener('mousedown', (event) => event.preventDefault());
           option.addEventListener('click', () => { activeIndex = index; accept(); input.focus(); });
-          panel.append(option);
+          list.append(option);
         });
-        panel.hidden = false;
-        input.setAttribute('aria-expanded', 'true');
-        status.textContent = '↑ ↓ to browse · Enter or Tab to select · Esc to close';
+        panel.style.minHeight = '';
+        spinner.hidden = true;
+        feedback.classList.add('is-hint');
+        feedbackMessage.textContent = '↑ ↓ to browse · Enter or Tab to select · Esc to close';
+        announce(`${suggestions.length} ${suggestions.length === 1 ? 'suggestion' : 'suggestions'} available. Use the arrow keys to browse.`);
       } catch {
-        if (version === generation) status.textContent = 'Preview unavailable. You can still submit your search.';
+        if (version === generation) showFeedback('Suggestions unavailable. Press Enter to search without a suggestion.');
       } finally {
         clearTimeout(timeout);
-        if (version === generation) input.removeAttribute('aria-busy');
+        if (version === generation) {
+          input.removeAttribute('aria-busy');
+          list.removeAttribute('aria-busy');
+        }
       }
     }, 300);
   };
@@ -115,17 +176,17 @@ if (input && panel && status && selectedZip && selectedLabel && selectedLocation
   input.addEventListener('compositionstart', () => { composing = true; close(); });
   input.addEventListener('compositionend', () => { composing = false; lookup(); });
   input.addEventListener('focus', () => { if (!selected) lookup(); });
-  input.addEventListener('blur', () => { close(); if (!selected) status.textContent = ''; });
+  input.addEventListener('blur', close);
   input.form.addEventListener('submit', close);
   input.addEventListener('keydown', (event) => {
     if (event.isComposing || composing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === 'Escape') {
       close();
-      status.textContent = selected ? 'City and ZIP selected. You can still edit this field.' : '';
+      announce(selected ? 'Location selected. You can still edit this field.' : 'Suggestions closed.');
       return;
     }
     if (!suggestions.length) {
-      if (event.key === 'ArrowDown' && !selected) { event.preventDefault(); lookup(); }
+      if (event.key === 'ArrowDown' && !selected && panel.hidden) { event.preventDefault(); lookup(); }
       return;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -133,7 +194,7 @@ if (input && panel && status && selectedZip && selectedLabel && selectedLocation
       activeIndex = activeIndex < 0
         ? (event.key === 'ArrowDown' ? 0 : suggestions.length - 1)
         : (activeIndex + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length;
-      Array.from(panel.children).forEach((option, index) => {
+      Array.from(list.children).forEach((option, index) => {
         option.setAttribute('aria-selected', String(index === activeIndex));
         if (index === activeIndex) {
           input.setAttribute('aria-activedescendant', option.id);

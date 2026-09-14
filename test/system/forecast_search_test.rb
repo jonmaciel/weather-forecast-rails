@@ -106,11 +106,15 @@ class ForecastSearchTest < ApplicationSystemTestCase
     fill_in "Address or ZIP code", with: "373"
     find("[role=option]", text: "37304").click
     street = "123 Main St, Boston, MA 02108"
+    stub_request(:get, Weather::PhotonClient::ENDPOINT).with(query: hash_including(q: street)).to_return(body: {
+      type: "FeatureCollection", features: []
+    }.to_json)
     stub_request(:get, Weather::CensusClient::ENDPOINT).with(query: hash_including(address: street)).to_return(body: {
       result: { addressMatches: [ { matchedAddress: street, addressComponents: { state: "MA", zip: "02108" }, coordinates: { x: -71.06, y: 42.36 } } ] }
     }.to_json)
     fill_in "Address or ZIP code", with: street
     assert_selector "#selected_location_id[value='']", visible: :all
+    address.send_keys(:escape)
     click_on "Check the weather"
     assert_selector "#forecast-heading", text: street
     assert_not_requested :get, Weather::ZipCodeClient::ENDPOINT, query: hash_including(name: "37304")
@@ -120,8 +124,9 @@ class ForecastSearchTest < ApplicationSystemTestCase
   test "preview failure leaves plain ZIP submission usable" do
     stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: hash_including(name: "021")).to_return(status: 503)
     fill_in "Address or ZIP code", with: "021"
-    assert_selector "#zip-status", text: "unavailable"
+    assert_selector "#zip-feedback", text: "unavailable"
     fill_in "Address or ZIP code", with: "02108"
+    address.send_keys(:tab)
     click_on "Check the weather"
     assert_selector "#forecast-heading", text: "Boston, Massachusetts"
   end

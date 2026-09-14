@@ -82,8 +82,10 @@ bin/rails runner 'puts Weather::Forecast.new.call(address: "4600 Silver Hill Rd,
 ```
 
 The service accepts full addresses or ZIP codes in the 50 US states and
-Washington, DC and returns Fahrenheit. Street addresses use Census; ZIP-only
-queries use Open-Meteo geocoding. Both paths use one Open-Meteo request for current conditions and daily high/low. Network access is required for live requests only.
+Washington, DC and returns Fahrenheit. Manual street addresses use Census;
+selected street suggestions use Photon data verified by the application, and ZIP
+queries use Open-Meteo geocoding. All paths share one Open-Meteo weather request
+for current conditions and daily high/low. Live provider requests need network access.
 
 `POST /forecasts` accepts an `address` parameter and returns `location` and
 `current` and `daily` JSON objects plus a boolean `from_cache` indicator. The endpoint retains Rails CSRF protection. The HTML form includes the session's
@@ -92,8 +94,9 @@ CSRF token; JSON callers must also provide it. Use `Accept: application/json`
 Errors return `{ "error": { "code": "...", "message": "..." } }` with HTTP 422
 for invalid or unresolved addresses, 502 for provider failures, 503 for provider
 rate limits, and 504 for timeouts. HTTP responses remain `no-store` so browsers
-do not retain address-specific results; the server caches only weather data.
-Address parameters and the selected display label are filtered from logs.
+do not retain address-specific results. The forecast cache contains weather data;
+suggestions have a separate short-lived in-memory cache. Address parameters,
+selection tokens and the selected display label are filtered from logs.
 Opening `GET /forecasts` redirects to the form (303) instead of returning a routing
 error; weather queries continue to use POST so addresses stay out of URLs.
 
@@ -109,10 +112,11 @@ Open-Meteo again. Reads do not extend expiration. After expiration, the next
 request retrieves fresh weather. Errors are never cached or replaced by expired
 weather. The key includes a schema version, provider, country, ZIP and unit.
 
-Each request resolves the input through Census (street address) or Open-Meteo
-geocoding (ZIP or selected locality) before reading the weather cache. This keeps
-the matched location specific to the request and revalidates selections, but a
-geocoder failure can still prevent a response when weather is cached. Inputs
+Before reading the weather cache, manual addresses and ZIPs are resolved through
+their geocoder; selected street addresses are verified locally using a signed,
+expiring token. They keep the chosen Photon location instead of being matched
+again by Census. A geocoder failure can still prevent a response for manual or
+ZIP input even when weather is cached. Inputs
 sharing a ZIP reuse weather from the first successful lookup in that window,
 even when their resolved coordinates differ. This is a deliberate approximation
 for the ZIP area. ZIPs are normalized to five digits, preserving leading zeros.
@@ -151,23 +155,29 @@ provider returns locality coordinates, not a precise ZIP centroid; forecasts are
 Some ZIPs may be absent from its dataset. Street and ZIP searches share the same
 30-minute weather cache. Location attribution includes GeoNames.
 
-## ZIP locality suggestions
+## Address and ZIP suggestions
 
-With JavaScript enabled, entering three to five ZIP digits (or ZIP+4) displays up to
-five suggestions after a 300 ms delay. Each option shows the city/state and ZIP.
-The list is attached to the input and scrolls independently without shifting the page.
-Selecting an option fills the input with a readable locality, such as
-`Athens, Tennessee 37303`, and closes the list without submitting the weather form.
-There is no separate selection card or Change action: edit the input directly.
+With JavaScript enabled, suggestions start at three ZIP digits or six street
+address characters containing a letter, after a 300 ms delay. Up to five options
+appear in the same list attached to the input, without shifting the page. ZIP
+selection fills a locality such as `Athens, Tennessee 37303`. Street selection
+fills the house number, street, city and state; its ZIP is shown separately in
+the option and forecast result. Selection never submits the weather form.
+Edit the field directly to change either selection.
 
-The form submits `selected_zip` and `selected_location_id` separately from the
-visible label, with `selected_label` recording its unchanged value. Editing clears
-all three fields. The controller forwards a selection only while its label matches
-that snapshot. The ZIP client resolves the provider's location ID and verifies
-that it belongs to the submitted ZIP in the US; browser labels and coordinates
-are never authoritative. An unknown or mismatched selection returns a recoverable
-validation error. The forecast service never parses the display label. ZIP+4 is
-retained in the input and normalized for weather lookup.
+While typing, the popup stays open with a loading indicator inside it. It retains
+its previous height while waiting, and outdated options cannot be selected.
+Empty results and lookup failures appear in the same popup; Enter still submits
+the typed text, and Escape or Tab dismisses the popup to reach the search button.
+Loading and result counts are announced without moving focus. The spinner respects
+reduced-motion preferences.
+
+ZIP selection uses `selected_zip` and `selected_location_id`; street selection uses
+`selected_address_token`. Both retain a `selected_label` snapshot, and editing
+clears selection metadata. The server revalidates a selected ZIP with its provider
+or verifies the street token and its exact address label. Tokens expire after one
+hour and are signed, not encrypted. Invalid or expired selections return a
+recoverable error. ZIP+4 is retained in the input and normalized for weather lookup.
 
 Plain ZIPs, full street addresses and resubmitting a selection rendered by the
 server work without JavaScript. Copying just the city/state label into a new
@@ -188,14 +198,26 @@ ZIPs and provider IDs are strings; IDs are positive integers up to `2147483647`,
 matching the provider's signed 32-bit range. Results, including empty lists, are
 cached by prefix for one hour; suggestions never fetch weather. Errors use the same
 `{ "error": { "code": "...", "message": "..." } }` envelope as forecasts;
-`invalid_zip_prefix` returns 422. Failures leave manual search usable. Provider
-coverage is not an exhaustive USPS directory or street-address autocomplete.
+`invalid_zip_prefix` returns 422. Failures leave manual search usable. ZIP lookup
+is not an exhaustive USPS directory and does not supply street addresses.
+
+`POST /address-lookup` accepts an `address` body parameter of 6–300 characters,
+including a letter, and returns suggestions containing `label`, `zip` and `token`.
+It retains Rails CSRF protection and never requests weather. Only complete US
+Photon candidates are offered; coverage is not a postal-validity guarantee.
+Manual submission continues to use Census, without an automatic provider fallback.
+Photon's public demo needs no key but has usage limits and no availability guarantee;
+the footer credits Photon and OpenStreetMap. See the integration notes for caching
+and token validation details.
 
 The interaction draws on the editable selection in
 [Google Places autocomplete](https://developers.google.com/maps/documentation/javascript/place-autocomplete-overview)
 and the manual-entry fallback in the
 [GOV.UK address pattern](https://design-system.service.gov.uk/patterns/addresses/).
-These are UX references; the app continues to use its existing providers.
+Loading feedback draws on [MUI Autocomplete](https://mui.com/material-ui/api/autocomplete/)
+and [W3C status messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html),
+with combobox semantics from [WAI-ARIA](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
+These are UX references; the app uses the providers described above.
 
 ## Delivery
 

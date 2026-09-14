@@ -19,9 +19,19 @@ class ForecastsController < ApplicationController
 
   def forecast_parameters
     # The visible label is only presentation. Editing it invalidates the selection.
+    unless @address.present? && @address.length <= 300 && @address == params[:selected_label]
+      return { address: params[:address] }
+    end
+
+    token = params[:selected_address_token]
+    if !token.nil? && token != ""
+      @selected_label = @address
+      @selected_address_token = token if token.is_a?(String)
+      return { address: @address, address_token: token }
+    end
+
     zip = params[:selected_zip]
-    if @address.present? && @address.length <= 300 && @address == params[:selected_label] &&
-        zip.is_a?(String) && zip.match?(/\A\d{5}(?:-\d{4})?\z/)
+    if zip.is_a?(String) && zip.match?(/\A\d{5}(?:-\d{4})?\z/)
       @selected_zip = zip
       @selected_label = @address
       location_id = params[:selected_location_id]

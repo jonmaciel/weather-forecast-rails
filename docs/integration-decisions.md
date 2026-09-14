@@ -13,7 +13,7 @@ five digits or ZIP+4, retaining the existing `address` API parameter.
 
 ## Providers
 
-### Address lookup: US Census Geocoder
+### Manual address lookup: US Census Geocoder
 
 Use `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress` with
 `address`, `benchmark=Public_AR_Current`, and `format=json`. The public endpoint
@@ -27,6 +27,24 @@ ZIPs, unsupported states, no matches, and ambiguous matches with actionable
 messages; never silently select an arbitrary candidate.
 
 Source: [Census API documentation](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html).
+
+### Address suggestions: Photon
+
+Use `https://photon.komoot.io/api/` for address suggestions, filtering for US house
+locations. Offer up to five complete addresses with valid ZIPs and coordinates;
+keep the house number, street, city and state in the label, and show ZIP separately.
+This is geographic matching, not postal verification. A chosen address is carried
+in a signed token and used directly, avoiding a second provider changing a street
+direction or selecting another location. Manual submission still uses Census;
+there is no automatic fallback between providers.
+
+The public demo requires no key, permits reasonable usage, and may throttle or
+change without notice. Debouncing and caching suit local evaluation; it has no
+availability guarantee for production. Credit Photon and OpenStreetMap in the
+footer, linking the OSM copyright page for attribution and the ODbL data license.
+
+Sources: [Photon API and demo terms](https://github.com/komoot/photon),
+[OpenStreetMap attribution](https://www.openstreetmap.org/copyright).
 
 ### ZIP lookup: Open-Meteo geocoding
 
@@ -67,11 +85,11 @@ Sources: [Weather API](https://open-meteo.com/en/docs),
 ## Alternatives considered
 
 - Open-Meteo geocoding alone does not cover full street addresses. It is now
-  selected for ZIP-only input, with Census retained for street addresses.
+  selected for ZIP-only input, with Census retained for manual street submission.
   [Documentation](https://open-meteo.com/en/docs/geocoding-api).
 - Public Nominatim: broader coverage, but its public service has a strict
   one-request-per-second limit and requires an identifying User-Agent and
-  attribution. Census keeps this US-only demo simpler.
+  attribution. Census handles manual addresses; Photon adds optional suggestions.
   [Usage policy](https://operations.osmfoundation.org/policies/nominatim/).
 
 ## Application contract
@@ -86,25 +104,34 @@ responses.
 | `ZipCodeClient#lookup(zip, location_id: nil)` | The same location fields, plus `display_name` |
 | `ZipCodeClient#suggestions(prefix)` | Up to five hashes with string `zip`, `label`, `location_id`; IDs are positive decimal strings up to `2147483647` |
 | `OpenMeteoClient#forecast(latitude:, longitude:)` | `current` and `daily` hashes |
-| `Forecast#call(address:, location_id: nil)` | `location`, `current`, `daily`, and boolean `from_cache` |
+| `PhotonClient#suggestions(query)` | Up to five normalized US address locations |
+| `AddressSuggestions#call(address)` | Suggestions with string `label`, `zip`, and signed `token` |
+| `AddressSuggestions#resolve(token, address:)` | The signed location when its token and exact address label are valid |
+| `Forecast#call(address:, location_id: nil, address_token: nil)` | `location`, `current`, `daily`, and boolean `from_cache` |
 
 Locations have a five-digit string ZIP, country `US`, nonempty labels and finite
 coordinates within latitude/longitude bounds. `current` contains a finite
 `temperature`, `unit` (`°F`), ISO local `time`, `timezone`, `source` and `source_url`.
 `daily` contains the matching local `date`, finite `high` and `low` (`high >= low`),
-and `unit`. The service accepts a ZIP or street address, never a presentation label.
+and `unit`. The service accepts a ZIP or street address; selection metadata supplies
+the location without parsing a locality label.
 
-The form carries `selected_zip`, `selected_location_id` and a `selected_label`
-snapshot. Editing clears all three. The controller forwards selection metadata
-only for an unchanged label; the ZIP client independently revalidates the ID and
-ZIP with the provider. It rejects malformed IDs before making a network request.
-The ID range follows the provider's signed 32-bit parameter.
+The form carries `selected_zip`/`selected_location_id` or `selected_address_token`,
+plus a `selected_label` snapshot. Editing clears all metadata. The controller
+forwards a selection only for an unchanged label. The ZIP client revalidates its
+ID and ZIP with the provider, rejecting malformed IDs before a network request.
+Street tokens use Rails' message verifier with purpose `address_selection` and
+one-hour expiration; verification also compares the signed address with the input.
+They contain only normalized location data and provide integrity, not encryption.
 
 Expected failures raise `Weather::Error` with `code`, message and HTTP `status`.
-Both JSON endpoints expose `{ "error": { "code": "...", "message": "..." } }`.
+All JSON endpoints expose `{ "error": { "code": "...", "message": "..." } }`.
 Invalid input, unresolved/ambiguous locations and `invalid_zip_selection` return
 422; the last covers malformed/unknown IDs or a selected locality outside the
 submitted ZIP/country. Invalid suggestion prefixes use `invalid_zip_prefix`.
+Street queries outside 6–300 characters or without a letter return
+`invalid_address_query` (422); invalid, forged or expired street selections return
+`invalid_address_selection` (422), without falling back to Census.
 Malformed provider payloads use `invalid_provider_response` (502), other provider
 failures return 502, rate limits 503, and timeouts 504. The HTTP adapter retains
 the upstream status internally as `provider_status`: the ZIP client translates
@@ -122,12 +149,18 @@ under a versioned key containing provider, country, ZIP and unit. Different
 addresses in the same ZIP reuse the first successful forecast in that window;
 this is a deliberate area-level approximation even when locations within that
 ZIP have different coordinates. Keep the current matched location outside that
-shared payload. The appropriate geocoder runs before the weather-cache lookup
-to resolve each input and revalidate selected IDs. Consequently, a geocoder
-failure still prevents a response even if that ZIP's weather is cached.
+shared payload. Before checking the weather cache, manual input and selected ZIPs
+use their geocoder; selected street tokens are verified locally. Consequently, a
+geocoder failure can block a cached forecast for manual/ZIP input, while a valid
+street token requires no second geocoding call.
 Do not cache errors; derive the cache indicator separately for each request.
-The weather cache remains schema `v2`; suggestion entries use `v2` to include IDs.
-Suggestion lists, including empty results, are cached by prefix for one hour.
+The weather cache remains schema `v2`; ZIP suggestion entries use `v2` and are
+cached by prefix for one hour. Address suggestions use a separate `v1` cache,
+keyed by trimmed, collapsed-whitespace, lowercase query, with the same TTL.
+Only normalized locations are cached, including empty lists. Each response signs
+fresh one-hour tokens, so a selected snapshot can be almost two hours old; this
+is an accepted geographic-data approximation for the demo, independent of the
+30-minute weather TTL.
 
 Rails.cache uses process-local memory. Restarting loses entries and multiple
 processes do not share them. Concurrent misses may each request fresh weather;
@@ -135,8 +168,11 @@ there is no lock or request coalescing, and each reports `from_cache: false`.
 Reads do not renew the 30-minute TTL. No database is needed. Shared caching and
 request coalescing are deferred until deployment or traffic requires them.
 
-Filter the address parameter from Rails logs. Send the full address only
-to the geocoder, and only coordinates to the weather API. Do not persist searches.
+Use POST with Rails CSRF protection for street suggestions and forecasts, keeping
+addresses out of application URLs. Filter addresses, labels and tokens from logs.
+Send address text only to the relevant geocoder and coordinates to the weather
+API. Queries and suggestion locations remain in process memory for their TTL;
+searches are not stored in a database.
 
 ## Verification performed
 
