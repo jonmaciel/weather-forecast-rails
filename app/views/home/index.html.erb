@@ -12,8 +12,10 @@
       <p class="intro">Find current conditions for the place you have in mind. Start with an address or ZIP code.</p>
 
       <%= form_with url: forecasts_path, method: :post, local: true, class: "search-form" do |form| %>
+        <%= form.hidden_field :selected_zip, value: @selected_zip %>
+        <%= form.hidden_field :selected_label, value: @selected_label %>
         <%= form.label :address, "Address or ZIP code" %>
-        <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a street address with city and state.</p>
+        <p id="address-help" class="field-help">US only: 50 states and Washington, DC. Enter a ZIP (e.g. 20233) or a full street address. ZIP suggestions start at 3 digits.</p>
         <div class="address-control">
           <%= form.text_field :address, value: @address, required: true, maxlength: 300,
             placeholder: "20233 or 4600 Silver Hill Rd, Washington, DC",
@@ -22,7 +24,6 @@
             aria: { describedby: @error ? "address-help search-error" : "address-help",
                     invalid: @error&.status == :unprocessable_content ? "true" : nil } %>
           <div id="zip-suggestion" class="zip-suggestion" hidden></div>
-          <div id="zip-selection" class="zip-selection" hidden></div>
         </div>
         <p id="zip-status" class="field-help" role="status" aria-live="polite"></p>
         <% if @error %>

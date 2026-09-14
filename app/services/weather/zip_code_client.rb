@@ -6,6 +6,27 @@ module Weather
       @http = http
     end
 
+    def suggestions(prefix)
+      data = @http.get(ENDPOINT, name: prefix, countryCode: "US", count: 100, language: "en", format: "json")
+      results = data.fetch("results", [])
+      raise TypeError unless results.is_a?(Array)
+      suggestions = results.flat_map do |result|
+        raise TypeError unless result.is_a?(Hash)
+        next [] unless result["country_code"] == "US"
+        name = result.fetch("name")
+        state = result.fetch("admin1")
+        postcodes = result.fetch("postcodes", [])
+        raise TypeError unless name.is_a?(String) && name.present? && state.is_a?(String) && state.present? && postcodes.is_a?(Array)
+        postcodes.filter_map do |zip|
+          next unless zip.is_a?(String) && zip.match?(/\A\d{5}\z/) && zip.start_with?(prefix)
+          { zip: zip, label: "#{name}, #{state}" }
+        end
+      end
+      suggestions.uniq.sort_by { |item| [ item.fetch(:zip), item.fetch(:label) ] }.first(5)
+    rescue KeyError, TypeError
+      raise Error.new("invalid_provider_response", "The ZIP lookup service returned an invalid response.")
+    end
+
     def lookup(zip)
       data = @http.get(ENDPOINT, name: zip, countryCode: "US", count: 100, language: "en", format: "json")
       results = data.fetch("results", [])

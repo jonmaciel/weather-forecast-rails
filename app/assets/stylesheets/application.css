@@ -61,15 +61,17 @@ h1 { font-size: clamp(40px, 4.8vw, 60px); font-weight: 600; line-height: 1.07; l
   .forecast-panel { padding: 24px; min-height: 370px; }
 }
 
-/* Keep the input, suggestion and selected locality within one field. */
-.address-control { border: 1px solid #a8b8b0; border-radius: 9px; background: #fff; }
+/* Keep the input and suggestions within one field. */
+.address-control { position: relative; border: 1px solid #a8b8b0; border-radius: 9px; background: #fff; }
+.address-control:has([aria-expanded="true"]) { border-radius: 9px 9px 0 0; }
 .address-control:focus-within { border-color: #956313; outline: 2px solid #956313; outline-offset: 2px; }
 .address-control:has([aria-invalid="true"]) { border-color: #a12f24; }
 .search-form .address-control input[type="text"] { border: 0; background: transparent; }
 .address-control input:focus-visible { outline: none; }
-.zip-suggestion { border-top: 1px solid #e0e7e1; padding: 4px; }
-.zip-option { width: 100%; text-align: left; padding: 10px; border-radius: 5px; background: #f2f6f1; color: #183b38; font: inherit; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.zip-suggestion { position: absolute; z-index: 2; top: 100%; left: -1px; right: -1px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #a8b8b0; border-top-color: #e0e7e1; border-radius: 0 0 9px 9px; background: #fff; box-shadow: 0 12px 24px #183b381a; padding: 4px; }
+.zip-option { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 10px; border-radius: 5px; color: #183b38; font: inherit; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.zip-option-label { font-weight: 600; }
+.zip-option-code { font-size: 12px; color: #526864; }
 .zip-option:hover, .zip-option[aria-selected="true"] { background: #e3ede1; }
 .zip-option[aria-selected="true"] { box-shadow: inset 3px 0 #214e44; }
-.zip-selection:not([hidden]) { border-top: 1px solid #e0e7e1; padding: 10px 14px; color: #526864; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 #zip-status:empty { display: none; }

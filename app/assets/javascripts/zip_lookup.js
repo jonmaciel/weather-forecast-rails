@@ -1,14 +1,16 @@
 const input = document.querySelector('[data-zip-lookup-url]');
 const panel = document.querySelector('#zip-suggestion');
 const status = document.querySelector('#zip-status');
-const selection = document.querySelector('#zip-selection');
+const selectedZip = document.querySelector('#selected_zip');
+const selectedLabel = document.querySelector('#selected_label');
 
-if (input && panel && status && selection) {
+if (input && panel && status && selectedZip && selectedLabel) {
   let timer;
   let request;
   let generation = 0;
-  let suggestion;
-  let selected;
+  let suggestions = [];
+  let activeIndex = -1;
+  let selected = selectedZip.value && selectedLabel.value === input.value;
   let composing = false;
 
   input.setAttribute('role', 'combobox');
@@ -22,7 +24,8 @@ if (input && panel && status && selection) {
     clearTimeout(timer);
     request?.abort();
     generation += 1;
-    suggestion = undefined;
+    suggestions = [];
+    activeIndex = -1;
     panel.replaceChildren();
     panel.hidden = true;
     input.setAttribute('aria-expanded', 'false');
@@ -31,24 +34,24 @@ if (input && panel && status && selection) {
   };
 
   const accept = () => {
-    if (!suggestion) return;
-    selected = suggestion;
+    if (!suggestions.length) return;
+    selected = suggestions[Math.max(activeIndex, 0)];
+    const zip = /^\d{5}-\d{4}$/.test(input.value.trim()) ? input.value.trim() : selected.zip;
+    input.value = `${selected.label} ${zip}`;
+    selectedZip.value = zip;
+    selectedLabel.value = input.value;
     close();
-    const label = document.createElement('span');
-    label.textContent = `${selected.label} · ZIP ${selected.zip}`;
-    selection.replaceChildren(label);
-    selection.hidden = false;
-    status.textContent = 'Location selected. You can edit the ZIP or check the weather.';
+    status.textContent = 'City and ZIP selected. You can edit this field or check the weather.';
   };
 
   const lookup = () => {
     close();
     selected = undefined;
-    selection.replaceChildren();
-    selection.hidden = true;
+    selectedZip.value = '';
+    selectedLabel.value = '';
     status.textContent = '';
     const value = input.value.trim();
-    if (composing || !/^\d{5}(?:-\d{4})?$/.test(value)) return;
+    if (composing || !/^(?:\d{3,5}|\d{5}-\d{4})$/.test(value)) return;
     const version = generation;
     const zip = value.slice(0, 5);
     timer = setTimeout(async () => {
@@ -67,20 +70,34 @@ if (input && panel && status && selection) {
           status.textContent = result.error || 'Preview unavailable. You can still submit your search.';
           return;
         }
-        if (result.zip !== zip || typeof result.label !== 'string') throw new Error('Invalid suggestion');
-        suggestion = result;
-        const option = document.createElement('div');
-        option.id = 'zip-location-option';
-        option.className = 'zip-option';
-        option.setAttribute('role', 'option');
-        option.setAttribute('aria-selected', 'false');
-        option.textContent = `${result.label} · ZIP ${result.zip}`;
-        option.addEventListener('mousedown', (event) => event.preventDefault());
-        option.addEventListener('click', () => { accept(); input.focus(); });
-        panel.append(option);
+        if (!Array.isArray(result.suggestions) || result.suggestions.some(item =>
+          typeof item.zip !== 'string' || !/^\d{5}$/.test(item.zip) || !item.zip.startsWith(zip) ||
+          typeof item.label !== 'string')) throw new Error('Invalid suggestions');
+        suggestions = result.suggestions.slice(0, 5);
+        if (!suggestions.length) {
+          status.textContent = 'No matching ZIPs found. Keep typing or enter a full address.';
+          return;
+        }
+        suggestions.forEach((item, index) => {
+          const option = document.createElement('div');
+          option.id = `zip-location-option-${index}`;
+          option.className = 'zip-option';
+          option.setAttribute('role', 'option');
+          option.setAttribute('aria-selected', 'false');
+          const label = document.createElement('span');
+          label.className = 'zip-option-label';
+          label.textContent = item.label;
+          const code = document.createElement('span');
+          code.className = 'zip-option-code';
+          code.textContent = `ZIP ${item.zip}`;
+          option.append(label, code);
+          option.addEventListener('mousedown', (event) => event.preventDefault());
+          option.addEventListener('click', () => { activeIndex = index; accept(); input.focus(); });
+          panel.append(option);
+        });
         panel.hidden = false;
         input.setAttribute('aria-expanded', 'true');
-        status.textContent = 'Enter or Tab to select. Right arrow at the end also selects. Esc dismisses.';
+        status.textContent = '↑ ↓ to browse · Enter or Tab to select · Esc to close';
       } catch {
         if (version === generation) status.textContent = 'Preview unavailable. You can still submit your search.';
       } finally {
@@ -100,18 +117,29 @@ if (input && panel && status && selection) {
     if (event.isComposing || composing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === 'Escape') {
       close();
-      status.textContent = selected ? 'Location selected. You can still edit the ZIP.' : '';
+      status.textContent = selected ? 'City and ZIP selected. You can still edit this field.' : '';
       return;
     }
-    if (!suggestion) {
+    if (!suggestions.length) {
       if (event.key === 'ArrowDown' && !selected) { event.preventDefault(); lookup(); }
       return;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      const option = panel.firstElementChild;
-      option.setAttribute('aria-selected', 'true');
-      input.setAttribute('aria-activedescendant', option.id);
+      activeIndex = activeIndex < 0
+        ? (event.key === 'ArrowDown' ? 0 : suggestions.length - 1)
+        : (activeIndex + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length;
+      Array.from(panel.children).forEach((option, index) => {
+        option.setAttribute('aria-selected', String(index === activeIndex));
+        if (index === activeIndex) {
+          input.setAttribute('aria-activedescendant', option.id);
+          // Scroll only the list, keeping the page and input in place.
+          if (option.offsetTop < panel.scrollTop) panel.scrollTop = option.offsetTop;
+          if (option.offsetTop + option.offsetHeight > panel.scrollTop + panel.clientHeight) {
+            panel.scrollTop = option.offsetTop + option.offsetHeight - panel.clientHeight;
+          }
+        }
+      });
     } else if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       accept();

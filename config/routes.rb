@@ -11,6 +11,7 @@ Rails.application.routes.draw do
 
   # Defines the root path route ("/")
   root "home#index"
+  get "forecasts", to: redirect("/", status: 303)
   resources :forecasts, only: :create
   get "zip-lookup", to: "zip_lookups#show", as: :zip_lookup
 end

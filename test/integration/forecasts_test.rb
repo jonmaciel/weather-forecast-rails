@@ -50,7 +50,7 @@ class ForecastsTest < ActionDispatch::IntegrationTest
       query
       assert_error :unprocessable_content, code
     end
-    assert_not_requested :get, Weather::OpenMeteoClient::ENDPOINT
+    assert_not_requested :get, /api\.open-meteo\.com\/v1\/forecast/
   end
 
   test "rejects unsupported states and missing ZIP codes" do
@@ -294,6 +294,65 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     assert_not_requested :get, /geocoding.geo.census.gov/
   end
 
+  test "selected ZIP is independent of label formatting and persists on resubmission" do
+    zip_request = stub_zip
+    weather = stub_weather
+    [ "Boston, Massachusetts 02108", "Boston (MA) — 02108" ].each do |label|
+      2.times do
+        post forecasts_path, params: { address: label, selected_zip: "02108", selected_label: label }
+        assert_response :success
+        assert_select "#forecast-heading", text: "Boston, Massachusetts"
+        assert_select "input#address[value=?]", label
+        assert_select "input#selected_zip[value='02108']"
+        assert_select "input#selected_label[value=?]", label
+      end
+    end
+    assert_requested zip_request, times: 4
+    assert_requested weather, times: 1
+    assert_not_requested :get, /geocoding.geo.census.gov/
+  end
+
+  test "editing the address discards stale ZIP selection even if metadata is submitted" do
+    address = "123 Main St, Boston, MA 02108"
+    census = stub_census
+    stub_weather
+    post forecasts_path, params: { address: address, selected_zip: "37303", selected_label: "Athens, Tennessee 37303" }
+    assert_response :success
+    assert_select "input#selected_zip[value]", count: 0
+    assert_select "input#selected_label[value]", count: 0
+    assert_requested census, times: 1
+    assert_not_requested :get, /geocoding-api\.open-meteo\.com/
+  end
+
+  test "selection metadata cannot bypass invalid address validation" do
+    [ nil, " ", "a" * 301, [ "Boston" ], { city: "Boston" } ].each do |address|
+      post forecasts_path, params: { address: address, selected_zip: "02108", selected_label: address }, as: :json
+      assert_error :unprocessable_content, "invalid_address"
+    end
+    assert_not_requested :get, /census.gov|open-meteo.com/
+  end
+
+  test "invalid ZIP selection metadata falls back to the supplied address" do
+    census = stub_census
+    stub_weather
+    [ "123", "37303-123", [ "02108" ], { zip: "02108" } ].each do |zip|
+      post forecasts_path, params: { address: "123 Main St, Boston, MA 02108", selected_zip: zip, selected_label: "123 Main St, Boston, MA 02108" }, as: :json
+      assert_response :success
+    end
+    assert_requested census, times: 4
+    assert_not_requested :get, /geocoding-api\.open-meteo\.com/
+  end
+
+  test "opening the forecast URL directly returns to the form" do
+    get forecasts_path
+    assert_response :see_other
+    assert_redirected_to root_path
+    follow_redirect!
+    assert_response :success
+    assert_select "input#address"
+    assert_not_requested :get, /census.gov|open-meteo.com/
+  end
+
   test "rejects malformed ZIPs without calling a provider" do
     [ "1234", "123456", "021081234", "02108-123", "02108-12345" ].each do |zip|
       post forecasts_path, params: { address: zip }, as: :json
@@ -331,20 +390,43 @@ class ForecastsTest < ActionDispatch::IntegrationTest
     2.times do
       get zip_lookup_path, params: { zip: "02108" }, as: :json
       assert_response :success
-      assert_equal({ "zip" => "02108", "label" => "Boston, Massachusetts" }, response.parsed_body)
+      assert_equal([ { "zip" => "02108", "label" => "Boston, Massachusetts" } ], response.parsed_body.fetch("suggestions"))
     end
     assert_requested lookup, times: 1
     assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
   end
 
   test "ZIP suggestion rejects incomplete input and handles missing ZIPs" do
-    get zip_lookup_path, params: { zip: "021" }, as: :json
+    get zip_lookup_path, params: { zip: "02" }, as: :json
     assert_response :unprocessable_content
     assert_not_requested :get, /open-meteo.com/
     stub_zip(payload: {})
     get zip_lookup_path, params: { zip: "02108" }, as: :json
-    assert_response :unprocessable_content
-    assert_match /not found/, response.parsed_body.fetch("error")
+    assert_response :success
+    assert_empty response.parsed_body.fetch("suggestions")
+  end
+
+  test "ZIP prefixes return five sorted unique matching US ZIPs and cache results" do
+    place = zip_place.merge(postcodes: [ "02109", "02108", "02108", "02110", "02111", "02112", "02113", "99999", "021001", nil ])
+    lookup = stub_request(:get, Weather::ZipCodeClient::ENDPOINT).with(query: {
+      name: "021", countryCode: "US", count: "100", language: "en", format: "json"
+    }).to_return(body: { results: [ place, place, place.merge(country_code: "CA", postcodes: [ "02100" ]) ] }.to_json)
+    2.times do
+      get zip_lookup_path, params: { zip: "021" }, as: :json
+      assert_response :success
+      assert_equal %w[02108 02109 02110 02111 02112], response.parsed_body.fetch("suggestions").map { |item| item.fetch("zip") }
+    end
+    assert_requested lookup, times: 1
+    assert_not_requested :get, /api.open-meteo.com\/v1\/forecast/
+  end
+
+  test "ZIP suggestions handle malformed provider responses and timeouts" do
+    stub_zip(payload: { results: [ { country_code: "US" } ] })
+    get zip_lookup_path, params: { zip: "02108" }, as: :json
+    assert_response :bad_gateway
+    stub_request(:get, /geocoding-api.open-meteo.com/).to_timeout
+    get zip_lookup_path, params: { zip: "02108" }, as: :json
+    assert_response :gateway_timeout
   end
 
   private
