@@ -26,6 +26,7 @@ class ForecastSearchTest < ApplicationSystemTestCase
     assert_current_path root_path
     click_on "Check the weather"
     assert_selector "#forecast-heading", text: "Athens, Tennessee"
+    assert_no_selector ".forecast-panel:focus"
     assert_selector ".daily-forecast", text: "80°F"
     assert_selector ".daily-forecast", text: "55°F"
     assert_field "address", with: "Athens, Tennessee 37304"
@@ -34,6 +35,41 @@ class ForecastSearchTest < ApplicationSystemTestCase
     assert_selector ".cache-badge", text: "From cache"
     assert_requested :get, /api.open-meteo.com\/v1\/forecast/, times: 1
     assert_not_requested :get, /geocoding.geo.census.gov/
+  end
+
+  test "mobile searches show fresh and cached weather immediately and keep errors at the input" do
+    original_size = current_window.size
+    current_window.resize_to(375, 667)
+    visit root_path
+    assert_no_selector ".forecast-panel:focus"
+
+    fill_in "Address or ZIP code", with: "021"
+    find("[role=option]", text: "Boston").click
+
+    [ "Just fetched", "From cache" ].each do |cache_status|
+      click_on "Check the weather"
+      assert_selector ".cache-badge", text: cache_status
+      assert_selector ".forecast-panel:focus"
+      assert_selector "#forecast-heading", text: "Boston, Massachusetts"
+      assert_selector ".location-detail", text: "ZIP 02108"
+      assert_selector ".temperature", text: "70°F"
+      assert page.evaluate_script(<<~JS), "Location, temperature and cache status should fit in the mobile viewport without scrolling"
+        ['#forecast-heading', '.location-detail', '.temperature', '.cache-badge'].every(selector => {
+          const rect = document.querySelector(selector).getBoundingClientRect();
+          return rect.top >= 0 && rect.bottom <= window.innerHeight &&
+            rect.left >= 0 && rect.right <= window.innerWidth;
+        })
+      JS
+    end
+
+    fill_in "Address or ZIP code", with: "02"
+    click_on "Check the weather"
+    assert_selector "#search-error"
+    assert_selector "#address:focus"
+    assert_no_selector ".forecast-panel:focus"
+    assert_requested :get, /api.open-meteo.com\/v1\/forecast/, times: 1
+  ensure
+    current_window.resize_to(*original_size) if original_size
   end
 
   test "selecting different locations for one ZIP preserves the place and shares weather cache" do
